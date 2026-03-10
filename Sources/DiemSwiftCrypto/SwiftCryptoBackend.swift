@@ -1,6 +1,6 @@
-import Foundation
 import Crypto
 import Diem
+import Foundation
 
 // MARK: - SwiftCryptoBackend
 
@@ -79,17 +79,21 @@ extension SwiftCryptoBackend {
     switch cryptoSet {
     case .classic:
       let key: Curve25519.Signing.PrivateKey
-      do { key = try Curve25519.Signing.PrivateKey(rawRepresentation: privateKey) }
-      catch { throw DiemError.invalidKey }
-      do { return [UInt8](try key.signature(for: message)) }
-      catch { throw DiemError.encryptionFailed }
+      do { key = try Curve25519.Signing.PrivateKey(rawRepresentation: privateKey) } catch {
+        throw DiemError.invalidKey
+      }
+      do { return [UInt8](try key.signature(for: message)) } catch {
+        throw DiemError.encryptionFailed
+      }
     case .pqc:
       if #available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, *) {
         let key: MLDSA65.PrivateKey
-        do { key = try MLDSA65.PrivateKey(seedRepresentation: Data(privateKey), publicKey: nil) }
-        catch { throw DiemError.invalidKey }
-        do { return [UInt8](try key.signature(for: message)) }
-        catch { throw DiemError.encryptionFailed }
+        do {
+          key = try MLDSA65.PrivateKey(seedRepresentation: Data(privateKey), publicKey: nil)
+        } catch { throw DiemError.invalidKey }
+        do { return [UInt8](try key.signature(for: message)) } catch {
+          throw DiemError.encryptionFailed
+        }
       } else {
         throw DiemError.unsupportedCryptoSet(cryptoSet)
       }
@@ -102,14 +106,16 @@ extension SwiftCryptoBackend {
     switch cryptoSet {
     case .classic:
       let key: Curve25519.Signing.PublicKey
-      do { key = try Curve25519.Signing.PublicKey(rawRepresentation: publicKey) }
-      catch { throw DiemError.invalidKey }
+      do { key = try Curve25519.Signing.PublicKey(rawRepresentation: publicKey) } catch {
+        throw DiemError.invalidKey
+      }
       return key.isValidSignature(signature, for: message)
     case .pqc:
       if #available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, *) {
         let key: MLDSA65.PublicKey
-        do { key = try MLDSA65.PublicKey(rawRepresentation: publicKey) }
-        catch { throw DiemError.invalidKey }
+        do { key = try MLDSA65.PublicKey(rawRepresentation: publicKey) } catch {
+          throw DiemError.invalidKey
+        }
         return key.isValidSignature(signature, for: message)
       } else {
         throw DiemError.unsupportedCryptoSet(cryptoSet)
@@ -164,8 +170,9 @@ extension SwiftCryptoBackend {
     plaintext: [UInt8], recipientPublicKey: [UInt8]
   ) throws -> (encapsulatedKey: [UInt8], ciphertext: [UInt8]) {
     let pubKey: Curve25519.KeyAgreement.PublicKey
-    do { pubKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: recipientPublicKey) }
-    catch { throw DiemError.invalidKey }
+    do {
+      pubKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: recipientPublicKey)
+    } catch { throw DiemError.invalidKey }
     var sender: HPKE.Sender
     do {
       sender = try HPKE.Sender(
@@ -174,8 +181,7 @@ extension SwiftCryptoBackend {
     } catch { throw DiemError.encryptionFailed }
     let encKey = [UInt8](sender.encapsulatedKey)
     let ct: [UInt8]
-    do { ct = [UInt8](try sender.seal(plaintext)) }
-    catch { throw DiemError.encryptionFailed }
+    do { ct = [UInt8](try sender.seal(plaintext)) } catch { throw DiemError.encryptionFailed }
     return (encKey, ct)
   }
 
@@ -184,8 +190,9 @@ extension SwiftCryptoBackend {
     plaintext: [UInt8], recipientPublicKey: [UInt8]
   ) throws -> (encapsulatedKey: [UInt8], ciphertext: [UInt8]) {
     let pubKey: XWingMLKEM768X25519.PublicKey
-    do { pubKey = try XWingMLKEM768X25519.PublicKey(rawRepresentation: recipientPublicKey) }
-    catch { throw DiemError.invalidKey }
+    do { pubKey = try XWingMLKEM768X25519.PublicKey(rawRepresentation: recipientPublicKey) } catch {
+      throw DiemError.invalidKey
+    }
     var sender: HPKE.Sender
     do {
       sender = try HPKE.Sender(
@@ -194,8 +201,7 @@ extension SwiftCryptoBackend {
     } catch { throw DiemError.encryptionFailed }
     let encKey = [UInt8](sender.encapsulatedKey)
     let ct: [UInt8]
-    do { ct = [UInt8](try sender.seal(plaintext)) }
-    catch { throw DiemError.encryptionFailed }
+    do { ct = [UInt8](try sender.seal(plaintext)) } catch { throw DiemError.encryptionFailed }
     return (encKey, ct)
   }
 
@@ -203,16 +209,16 @@ extension SwiftCryptoBackend {
     ciphertext: [UInt8], encapsulatedKey: [UInt8], recipientPrivateKey: [UInt8]
   ) throws -> [UInt8] {
     let privKey: Curve25519.KeyAgreement.PrivateKey
-    do { privKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: recipientPrivateKey) }
-    catch { throw DiemError.invalidKey }
+    do {
+      privKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: recipientPrivateKey)
+    } catch { throw DiemError.invalidKey }
     var recipient: HPKE.Recipient
     do {
       recipient = try HPKE.Recipient(
         privateKey: privKey, ciphersuite: .Curve25519_SHA256_ChachaPoly,
         info: SwiftCryptoBackend.hpkeInfo, encapsulatedKey: Data(encapsulatedKey))
     } catch { throw DiemError.decryptionFailed }
-    do { return [UInt8](try recipient.open(ciphertext)) }
-    catch { throw DiemError.decryptionFailed }
+    do { return [UInt8](try recipient.open(ciphertext)) } catch { throw DiemError.decryptionFailed }
   }
 
   @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, *)
@@ -230,8 +236,7 @@ extension SwiftCryptoBackend {
         privateKey: privKey, ciphersuite: .XWingMLKEM768X25519_SHA256_AES_GCM_256,
         info: SwiftCryptoBackend.hpkeInfo, encapsulatedKey: Data(encapsulatedKey))
     } catch { throw DiemError.decryptionFailed }
-    do { return [UInt8](try recipient.open(ciphertext)) }
-    catch { throw DiemError.decryptionFailed }
+    do { return [UInt8](try recipient.open(ciphertext)) } catch { throw DiemError.decryptionFailed }
   }
 }
 

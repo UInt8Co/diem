@@ -20,14 +20,16 @@ public protocol DiemCryptoBackend: Sendable {
   /// - Returns: `(publicKey, privateKey)` both as raw bytes.
   /// - Throws: ``DiemError/unsupportedCryptoSet(_:)`` if `cryptoSet` is not supported.
   func generateSigningKeyPair(for cryptoSet: CryptoSet) throws -> (
-    publicKey: [UInt8], privateKey: [UInt8])
+    publicKey: [UInt8], privateKey: [UInt8]
+  )
 
   /// Generates an encryption (key-agreement / KEM) key pair for the given crypto set.
   ///
   /// - Returns: `(publicKey, privateKey)` both as raw bytes.
   /// - Throws: ``DiemError/unsupportedCryptoSet(_:)`` if `cryptoSet` is not supported.
   func generateEncryptionKeyPair(for cryptoSet: CryptoSet) throws -> (
-    publicKey: [UInt8], privateKey: [UInt8])
+    publicKey: [UInt8], privateKey: [UInt8]
+  )
 
   // MARK: Signing
 

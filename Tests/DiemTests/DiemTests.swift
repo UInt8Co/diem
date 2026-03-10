@@ -1,5 +1,5 @@
-import Testing
 import DiemSwiftCrypto
+import Testing
 
 // MARK: - Profile Tests
 

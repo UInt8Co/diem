@@ -112,9 +112,11 @@ extension Identity {
     guard backend.supportedCryptoSets.contains(cryptoSet) else {
       throw DiemError.unsupportedCryptoSet(cryptoSet)
     }
-    guard let signingKey = profile.keys.first(where: {
-      $0.keyType == .signing && $0.cryptoSet == cryptoSet
-    }) else {
+    guard
+      let signingKey = profile.keys.first(where: {
+        $0.keyType == .signing && $0.cryptoSet == cryptoSet
+      })
+    else {
       throw DiemError.keyNotFound
     }
     guard let privKeyBytes = privateKeyStore[signingKey.id] else {
