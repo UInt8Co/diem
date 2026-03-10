@@ -1,0 +1,9 @@
+{
+  "lsp": {
+    "sourcekit-lsp": {
+      "binary": {
+        "path": "/Users/laosb/.swiftly/bin/sourcekit-lsp",
+      },
+    },
+  },
+}
