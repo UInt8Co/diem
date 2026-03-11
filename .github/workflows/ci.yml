@@ -7,10 +7,33 @@ on:
     branches: [main]
 
 jobs:
-  # ── Test suite ────────────────────────────────────────────────────────────
-  test:
-    name: Run Tests
-    # macOS 26 gives us the PQC crypto APIs (ML-DSA-65, X-Wing) at runtime.
+  # ── Soundness checks (format, shellcheck, unacceptable language) ──────────
+  soundness:
+    name: Soundness
+    uses: swiftlang/github-workflows/.github/workflows/soundness.yml@0.0.8
+    with:
+      # Pre-v1; no API stability contract yet.
+      api_breakage_check_enabled: false
+      # No license headers in this project.
+      license_header_check_enabled: false
+      # No DocC documentation target yet.
+      docs_check_enabled: false
+
+  # ── Linux test matrix (via Docker containers, multiple Swift versions) ────
+  linux-tests:
+    name: Linux Tests
+    uses: swiftlang/github-workflows/.github/workflows/swift_package_test.yml@0.0.8
+    with:
+      # macOS tests run in the separate custom job below.
+      enable_macos_checks: false
+      # Windows CI is not targeted.
+      enable_windows_checks: false
+      # Our package uses swiftLanguageModes: [.v6]; exclude pre-6.0 toolchains.
+      linux_exclude_swift_versions: '[{"swift_version":"5.9"},{"swift_version":"5.10"}]'
+
+  # ── macOS test suite (needs macOS 26 for PQC crypto APIs) ────────────────
+  macos-tests:
+    name: macOS Tests (Xcode 26.3)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -22,15 +45,14 @@ jobs:
           echo "$HOME/.local/share/swiftly/bin" >> "$GITHUB_PATH"
 
       - name: Install Swift toolchain
-        run: |
-          swiftly install --use "$(cat .swift-version)"
+        run: swiftly install --use "$(cat .swift-version)"
 
       - name: Run tests
         run: swiftly run swift test
 
-  # ── Embedded WASM build ───────────────────────────────────────────────────
+  # ── Embedded WASM build (Foundation-free targets only) ───────────────────
   embedded:
-    name: Build Embedded WASM
+    name: Embedded WASM Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,8 +64,7 @@ jobs:
           echo "$HOME/.local/share/swiftly/bin" >> "$GITHUB_PATH"
 
       - name: Install Swift toolchain
-        run: |
-          swiftly install --use "$(cat .swift-version)"
+        run: swiftly install --use "$(cat .swift-version)"
 
       - name: Install WASM Embedded Swift SDK
         run: |
