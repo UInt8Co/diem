@@ -21,6 +21,8 @@ jobs:
           key: swiftly-${{ runner.os }}-${{ hashFiles('.swift-version') }}
 
       - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.3-snapshot-2026-03-05"
 
       - name: Cache SPM dependencies
         uses: actions/cache@v4
@@ -34,8 +36,7 @@ jobs:
 
       - name: Install WASM Embedded Swift SDK
         run: |
-          swiftly run swift sdk install \
-            "$(swiftly run swift sdk list --available | grep wasm32-unknown-none-wasm | awk '{print $1}' | head -1)"
+          swiftly run swift sdk install https://download.swift.org/swift-6.3-branch/static-sdk/swift-6.3-DEVELOPMENT-SNAPSHOT-2026-03-05-a/swift-6.3-DEVELOPMENT-SNAPSHOT-2026-03-05-a_static-linux-0.1.0.artifactbundle.tar.gz --checksum f19419ad6a90d0fe5bbf8a28fbc47217ce212633c28257fc6549162558e6f9b6
 
       - name: Build embedded targets
         run: bash Scripts/build-embedded.sh
@@ -55,6 +56,8 @@ jobs:
           key: swiftly-${{ runner.os }}-${{ hashFiles('.swift-version') }}
 
       - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.3-snapshot-2026-03-05"
 
       - name: Cache SPM dependencies
         uses: actions/cache@v4
