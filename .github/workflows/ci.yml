@@ -31,8 +31,8 @@ jobs:
 
       - name: Install WASM Embedded Swift SDK
         run: |
-          swift sdk install \
-            "$(swift sdk list --available | grep wasm32-unknown-none-wasm | awk '{print $1}' | head -1)"
+          swiftly run swift sdk install \
+            "$(swiftly run swift sdk list --available | grep wasm32-unknown-none-wasm | awk '{print $1}' | head -1)"
 
       - name: Build embedded targets
         run: bash Scripts/build-embedded.sh
