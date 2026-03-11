@@ -20,6 +20,18 @@ jobs:
       - name: Run tests
         run: swift test
 
+  # ── Linux test suite ─────────────────────────────────────────────────────
+  test-linux:
+    name: Run Tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: swift-actions/setup-swift@v3
+
+      - name: Run tests
+        run: swiftly run swift test
+
   # ── Embedded WASM build ───────────────────────────────────────────────────
   embedded:
     name: Build Embedded WASM
