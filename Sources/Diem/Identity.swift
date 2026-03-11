@@ -18,13 +18,6 @@ public struct Identity<Backend: DiemCryptoBackend>: Sendable {
   public let backend: Backend
 
   private let privateKeyStore: [[UInt8]: [UInt8]]
-
-  // Private designated init — suppresses memberwise synthesis.
-  private init(profile: Profile, backend: Backend, privateKeyStore: [[UInt8]: [UInt8]]) {
-    self.profile = profile
-    self.backend = backend
-    self.privateKeyStore = privateKeyStore
-  }
 }
 
 // MARK: - Initialisation

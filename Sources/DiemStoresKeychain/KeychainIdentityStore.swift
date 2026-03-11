@@ -66,7 +66,7 @@ import DiemSwiftCrypto
         throw DiemError.keyNotFound
       }
       guard let items = result as? [[CFString: Any]] else { return [] }
-      return try items.compactMap { item in
+      return items.compactMap { item in
         guard let data = item[kSecValueData] as? Data else { return nil }
         return try? deserialize([UInt8](data))
       }

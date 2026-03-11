@@ -35,7 +35,7 @@ let package = Package(
     .target(
       name: "Diem",
       dependencies: [
-        .product(name: "CBOR", package: "cbor"),
+        .product(name: "CBOR", package: "cbor")
       ]
     ),
     .target(
