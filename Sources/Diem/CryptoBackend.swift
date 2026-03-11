@@ -74,4 +74,11 @@ public protocol DiemCryptoBackend: Sendable {
   /// The identifier is used as the ``PublicKeyEntry/id`` and as the key in
   /// ``Identity/privateKeysByKeyID``.  A typical implementation returns SHA-256(publicKey).
   func keyID(publicKey: [UInt8]) -> [UInt8]
+
+  // MARK: Random bytes
+
+  /// Returns `count` cryptographically random bytes.
+  ///
+  /// Used by ``Identity`` to generate a stable ``Profile/id``.
+  func generateRandomBytes(count: Int) -> [UInt8]
 }

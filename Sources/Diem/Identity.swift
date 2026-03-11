@@ -65,9 +65,10 @@ extension Identity {
         PublicKeyEntry(id: kaID, keyType: .keyAgreement, cryptoSet: set, rawBytes: kaPub))
       store[kaID] = kaPriv
     }
+    let profileID = backend.generateRandomBytes(count: 16)
     self.init(
       profile: Profile(
-        keys: keys, name: name, createdAt: createdAt, expiresAt: expiresAt,
+        id: profileID, keys: keys, name: name, createdAt: createdAt, expiresAt: expiresAt,
         extensions: extensions),
       backend: backend,
       privateKeyStore: store)

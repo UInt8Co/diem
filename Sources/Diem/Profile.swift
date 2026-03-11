@@ -89,12 +89,14 @@ extension PublicKeyEntry {
 
 /// The public-facing portion of an ``Identity``.
 ///
-/// A ``Profile`` is safe to share with other parties. It contains one or more public
-/// keys (across one or more ``CryptoSet``s), a human-readable ``name``, optional
-/// validity timestamps, and optional user-defined ``extensions`` as a CBOR value.
+/// A ``Profile`` is safe to share with other parties. It contains a stable random ``id``,
+/// one or more public keys (across one or more ``CryptoSet``s), a human-readable ``name``,
+/// optional validity timestamps, and optional user-defined ``extensions`` as a CBOR value.
 ///
 /// Serialised as a CBOR map with integer keys.
 public struct Profile: Sendable {
+  /// A stable 16-byte random identifier for this profile, generated at identity creation.
+  public let id: [UInt8]
   /// The public key entries associated with this profile.
   public let keys: [PublicKeyEntry]
   /// A human-readable name for this identity.
@@ -107,32 +109,49 @@ public struct Profile: Sendable {
   public let extensions: CBOR?
 
   public init(
+    id: [UInt8],
     keys: [PublicKeyEntry],
     name: String,
     createdAt: UInt64? = nil,
     expiresAt: UInt64? = nil,
     extensions: CBOR? = nil
   ) {
+    self.id = id
     self.keys = keys
     self.name = name
     self.createdAt = createdAt
     self.expiresAt = expiresAt
     self.extensions = extensions
   }
+
+  /// A lowercase hex string representation of ``id``, suitable for display and logging.
+  public var hexID: String {
+    id.reduce(into: "") { result, byte in
+      let hi = (byte >> 4) & 0x0F
+      let lo = byte & 0x0F
+      result.append(Character(UnicodeScalar(hi < 10 ? 48 &+ hi : 87 &+ hi)))
+      result.append(Character(UnicodeScalar(lo < 10 ? 48 &+ lo : 87 &+ lo)))
+    }
+  }
 }
 
 extension Profile {
   private enum Field: UInt64 {
-    case keys = 0
-    case name = 1
-    case createdAt = 2
-    case expiresAt = 3
-    case extensions = 4
+    case id = 0
+    case keys = 1
+    case name = 2
+    case createdAt = 3
+    case expiresAt = 4
+    case extensions = 5
   }
 
   /// Encodes this profile as a CBOR map.
   public func toCBOR() -> CBOR {
     var pairs: [CBORMapPair] = [
+      CBORMapPair(
+        key: .unsignedInt(Field.id.rawValue),
+        value: .byteString(ArraySlice(id))
+      ),
       CBORMapPair(
         key: .unsignedInt(Field.keys.rawValue),
         value: .array(keys.map { $0.toCBOR() })
@@ -160,6 +179,7 @@ extension Profile {
   /// Decodes a ``Profile`` from a CBOR map.
   public static func fromCBOR(_ cbor: CBOR) throws -> Profile {
     guard let pairs = try cbor.mapValue() else { throw DiemError.invalidCBOR }
+    var id: [UInt8]?
     var keys: [PublicKeyEntry]?
     var name: String?
     var createdAt: UInt64?
@@ -168,6 +188,8 @@ extension Profile {
     for pair in pairs {
       guard case .unsignedInt(let k) = pair.key else { continue }
       switch k {
+      case Field.id.rawValue:
+        id = pair.value.byteStringValue()
       case Field.keys.rawValue:
         let elements = try pair.value.arrayValue() ?? []
         keys = try elements.map { try PublicKeyEntry.fromCBOR($0) }
@@ -183,11 +205,12 @@ extension Profile {
         break
       }
     }
-    guard let keys, let name else {
-      throw DiemError.missingField("Profile: keys or name missing")
+    guard let id, let keys, let name else {
+      throw DiemError.missingField("Profile: id, keys, or name missing")
     }
     return Profile(
-      keys: keys, name: name, createdAt: createdAt, expiresAt: expiresAt, extensions: extensions)
+      id: id, keys: keys, name: name, createdAt: createdAt, expiresAt: expiresAt,
+      extensions: extensions)
   }
 
   /// Serialises this profile to CBOR bytes.

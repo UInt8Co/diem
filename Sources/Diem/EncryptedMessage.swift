@@ -69,6 +69,25 @@ extension EncryptedMessage {
       encapsulatedKey: encapsulatedKey,
       ciphertext: ciphertext)
   }
+
+  /// Encrypts `payload` for a `Profile`, using the first key-agreement key for `cryptoSet`.
+  ///
+  /// - Throws: ``DiemError/keyNotFound`` if no matching key-agreement key exists.
+  public static func encrypt<Backend: DiemCryptoBackend>(
+    _ payload: CBOR,
+    to recipient: Profile,
+    cryptoSet: CryptoSet,
+    using backend: Backend
+  ) throws -> EncryptedMessage {
+    guard
+      let kaKey = recipient.keys.first(where: {
+        $0.keyType == .keyAgreement && $0.cryptoSet == cryptoSet
+      })
+    else {
+      throw DiemError.keyNotFound
+    }
+    return try encrypt(payload, to: kaKey, using: backend)
+  }
 }
 
 // MARK: - CBOR serialisation

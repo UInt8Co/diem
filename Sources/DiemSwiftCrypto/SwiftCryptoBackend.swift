@@ -251,4 +251,10 @@ extension SwiftCryptoBackend {
     }
     return [UInt8](hasher.finalize())
   }
+
+  /// Returns `count` cryptographically random bytes using `SystemRandomNumberGenerator`.
+  public func generateRandomBytes(count: Int) -> [UInt8] {
+    var rng = SystemRandomNumberGenerator()
+    return (0..<count).map { _ in rng.next() }
+  }
 }

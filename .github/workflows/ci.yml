@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Test suite ────────────────────────────────────────────────────────────
+  test:
+    name: Run Tests
+    # macOS 26 gives us the PQC crypto APIs (ML-DSA-65, X-Wing) at runtime.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install swiftly
+        run: |
+          curl -fsSL https://swiftlang.github.io/swiftly/swiftly-install.sh \
+            | bash -s -- -y --no-modify-profile
+          echo "$HOME/.local/share/swiftly/bin" >> "$GITHUB_PATH"
+
+      - name: Install Swift toolchain
+        run: |
+          swiftly install --use "$(cat .swift-version)"
+
+      - name: Run tests
+        run: swiftly run swift test
+
+  # ── Embedded WASM build ───────────────────────────────────────────────────
+  embedded:
+    name: Build Embedded WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install swiftly
+        run: |
+          curl -fsSL https://swiftlang.github.io/swiftly/swiftly-install.sh \
+            | bash -s -- -y --no-modify-profile
+          echo "$HOME/.local/share/swiftly/bin" >> "$GITHUB_PATH"
+
+      - name: Install Swift toolchain
+        run: |
+          swiftly install --use "$(cat .swift-version)"
+
+      - name: Install WASM Embedded Swift SDK
+        run: |
+          swiftly run swift sdk install \
+            "$(swiftly run swift sdk list --available | grep wasm32-unknown-none-wasm | awk '{print $1}' | head -1)"
+
+      - name: Build embedded targets
+        run: bash Scripts/build-embedded.sh

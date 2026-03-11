@@ -16,4 +16,6 @@ public enum DiemError: Error, Sendable, Equatable {
   case decryptionFailed
   /// The backend does not support the requested crypto set.
   case unsupportedCryptoSet(CryptoSet)
+  /// An item with this ID already exists in the store.
+  case alreadyExists
 }
