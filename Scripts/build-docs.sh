@@ -51,7 +51,7 @@ rm -rf dist
 mkdir -p dist
 
 for target in "${TARGETS[@]}"; do
-  echo "→ Generating docs for $target…"
+  echo "→ Generating docs for $target..."
   swiftly run swift package generate-documentation \
     --target "$target" \
     --output-path "dist/$target" \
