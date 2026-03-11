@@ -1,8 +1,9 @@
 import CBOR
+import Diem
 
 // MARK: - ProfileStore
 
-/// A store for ``Profile`` values, keyed by ``Profile/id``.
+/// A store for ``/Diem/Profile`` values, keyed by ``/Diem/Profile/id``.
 ///
 /// Implementors must provide persistent or in-memory storage. Default implementations
 /// are provided for ``storeOrUpdate(_:)``, ``profile(forKeyID:)``,
@@ -15,7 +16,7 @@ public protocol ProfileStore: Sendable {
 
   /// Stores a new profile.
   ///
-  /// - Throws: ``DiemError/alreadyExists`` if a profile with the same ``Profile/id`` is
+  /// - Throws: ``/Diem/DiemError/alreadyExists`` if a profile with the same ``/Diem/Profile/id`` is
   ///   already present.
   func store(_ profile: Profile) throws
 
@@ -33,8 +34,8 @@ public protocol ProfileStore: Sendable {
   /// Returns the profile that owns the given public key ID, or `nil` if not found.
   ///
   /// Used to resolve a sender or recipient key to its profile without knowing the profile ID
-  /// upfront — for example when verifying a ``SignedMessage`` or routing an
-  /// ``EncryptedMessage``.
+  /// upfront — for example when verifying a ``/Diem/SignedMessage`` or routing an
+  /// ``/Diem/EncryptedMessage``.
   ///
   /// A default implementation that scans ``allProfiles()`` is provided. Backends are
   /// encouraged to override this with an indexed lookup.
@@ -87,10 +88,10 @@ extension ProfileStore {
 
   // MARK: Convenience: verify signed message
 
-  /// Verifies a ``SignedMessage`` using ``profile(forKeyID:)`` to locate the sender's key.
+  /// Verifies a ``/Diem/SignedMessage`` using ``profile(forKeyID:)`` to locate the sender's key.
   ///
   /// - Returns: `true` if the signature is valid.
-  /// - Throws: ``DiemError/keyNotFound`` if no stored profile owns ``SignedMessage/senderKeyID``.
+  /// - Throws: ``/Diem/DiemError/keyNotFound`` if no stored profile owns ``/Diem/SignedMessage/senderKeyID``.
   public func verify<B: DiemCryptoBackend>(_ message: SignedMessage, using backend: B) throws
     -> Bool
   {

@@ -20,9 +20,6 @@ public struct SignedMessage: Sendable {
   public let signature: [UInt8]
 
   /// The exact CBOR bytes that were signed, preserved for stable verification.
-  ///
-  /// Stored separately so ``verify`` uses the identical byte sequence rather than
-  /// re-encoding ``payload`` (which could differ under different CBOR implementations).
   public let payloadBytes: [UInt8]
 
   public init(
@@ -43,14 +40,14 @@ public struct SignedMessage: Sendable {
 // MARK: - Verification
 
 extension SignedMessage {
-  /// Verifies the signature against a specific ``signingKey``.
+  /// Verifies the signature against a specific `signingKey`.
   ///
   /// - Parameters:
-  ///   - signingKey: A ``PublicKeyEntry`` whose ``keyType`` is ``KeyType/signing``.
+  ///   - signingKey: A ``PublicKeyEntry`` whose `keyType` is ``KeyType/signing``.
   ///   - backend: The crypto backend to use.
   /// - Returns: `true` when the signature is valid.
   /// - Throws: ``DiemError/invalidKeyType`` if the key is not a signing key or its
-  ///           ``cryptoSet`` does not match this message's ``cryptoSet``.
+  ///           `cryptoSet` does not match this message's `cryptoSet`.
   public func verify<Backend: DiemCryptoBackend>(
     against signingKey: PublicKeyEntry, using backend: Backend
   ) throws -> Bool {
@@ -64,10 +61,10 @@ extension SignedMessage {
       cryptoSet: cryptoSet)
   }
 
-  /// Verifies the signature using the matching signing key from ``senderProfile``.
+  /// Verifies the signature using the matching signing key from `senderProfile`.
   ///
-  /// Searches ``senderProfile`` for a signing key whose ``id`` matches ``senderKeyID``
-  /// and whose ``cryptoSet`` matches this message's ``cryptoSet``.
+  /// Searches `senderProfile` for a signing key whose `id` matches `senderKeyID`
+  /// and whose `cryptoSet` matches this message's `cryptoSet`.
   ///
   /// - Throws: ``DiemError/keyNotFound`` if no matching key is found in the profile.
   public func verify<Backend: DiemCryptoBackend>(

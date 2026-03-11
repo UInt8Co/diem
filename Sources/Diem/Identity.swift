@@ -4,10 +4,8 @@ import CBOR
 
 /// A full cryptographic identity comprising a public ``profile`` and private keys.
 ///
-/// `Identity` is generic over a ``DiemCryptoBackend``, which decouples key generation and
-/// crypto operations from the core data model.  This allows `Identity` to compile on Embedded
-/// targets (e.g. WASM Embedded) using ``MockCryptoBackend``, while real platforms use
-/// ``SwiftCryptoBackend`` from the `DiemSwiftCrypto` library.
+/// ``Identity`` is generic over a ``DiemCryptoBackend``, which decouples key generation and
+/// crypto operations from the core data model.
 ///
 /// Private keys are stored as raw bytes keyed by their public key ID, enabling identities
 /// that carry keys for multiple crypto sets.
@@ -130,7 +128,7 @@ extension Identity {
 extension Identity {
   /// Decrypts an ``EncryptedMessage`` addressed to this identity.
   ///
-  /// Matches ``message.recipientKeyID`` against the identity's key-agreement keys, then
+  /// Matches ``EncryptedMessage/recipientKeyID`` against the identity's key-agreement keys, then
   /// delegates HPKE decryption to the backend.
   ///
   /// - Parameter message: The encrypted message to decrypt.

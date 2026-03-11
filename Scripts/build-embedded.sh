@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-SDK="wasm32-unknown-none-wasm"
+SDK="swift-6.3-DEVELOPMENT-SNAPSHOT-2026-03-05-a_wasm-embedded"
 
 EMBEDDED_TARGETS=(
   "Diem"

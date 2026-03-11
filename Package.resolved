@@ -1,13 +1,13 @@
 {
-  "originHash" : "2aeb6ffc97902c0d3c6c3286ae0ef77ff32f6ee1b30692c59b4cc16748e01c99",
+  "originHash" : "1a7b699738c227993bcf69b3693c31234b5cac42d3505de6a90f2a08bd00431d",
   "pins" : [
     {
       "identity" : "cbor",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/wendylabsinc/cbor.git",
       "state" : {
-        "revision" : "4da266dde3f9c2b8b1839a03089f36ddb6045f5b",
-        "version" : "0.7.0"
+        "branch" : "main",
+        "revision" : "c15a114524c9502925162dc4a9c7e1aa226ee44a"
       }
     },
     {

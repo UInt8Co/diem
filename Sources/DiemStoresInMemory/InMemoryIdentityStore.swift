@@ -1,6 +1,7 @@
+import Diem
 import DiemStores
 
-/// An in-memory ``IdentityStore`` with a secondary key-ID index for efficient decryption.
+/// An in-memory ``/DiemStores/IdentityStore`` with a secondary key-ID index for efficient decryption.
 ///
 /// Suitable for tests, short-lived processes, and Swift Embedded targets.
 public final class InMemoryIdentityStore<B: DiemCryptoBackend>: IdentityStore,
@@ -9,9 +10,9 @@ public final class InMemoryIdentityStore<B: DiemCryptoBackend>: IdentityStore,
   public typealias Backend = B
 
   public let backend: B
-  /// Identities keyed by ``Profile/id``.
+  /// Identities keyed by ``/Diem/Profile/id``.
   private var identities: [[UInt8]: Identity<B>] = [:]
-  /// Maps each ``PublicKeyEntry/id`` to its owning ``Profile/id``.
+  /// Maps each ``/Diem/PublicKeyEntry/id`` to its owning ``/Diem/Profile/id``.
   private var keyIndex: [[UInt8]: [UInt8]] = [:]
 
   public init(backend: B) {
@@ -46,7 +47,7 @@ public final class InMemoryIdentityStore<B: DiemCryptoBackend>: IdentityStore,
 
   // MARK: - Efficient decrypt using key index
 
-  /// Decrypts an ``EncryptedMessage`` using the key-ID index for O(1) identity lookup.
+  /// Decrypts an ``/Diem/EncryptedMessage`` using the key-ID index for O(1) identity lookup.
   public func decrypt(_ message: EncryptedMessage) throws -> CBOR {
     guard let profileID = keyIndex[message.recipientKeyID] else {
       throw DiemError.keyNotFound

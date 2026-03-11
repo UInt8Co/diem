@@ -46,7 +46,7 @@ extension EncryptedMessage {
   ///
   /// - Parameters:
   ///   - payload: The CBOR value to encrypt.
-  ///   - recipientPublicKey: A ``PublicKeyEntry`` whose ``keyType`` is ``KeyType/keyAgreement``.
+  ///   - recipientPublicKey: A ``PublicKeyEntry`` whose ``PublicKeyEntry/keyType`` is ``KeyType/keyAgreement``.
   ///   - backend: The crypto backend to use.
   /// - Throws: ``DiemError/invalidKeyType`` if the key is not a key-agreement key,
   ///           ``DiemError/unsupportedCryptoSet(_:)`` if the backend can't handle the key's set.

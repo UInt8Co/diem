@@ -1,9 +1,9 @@
 import Diem
 
-/// A no-op ``DiemCryptoBackend`` for use in tests and on Embedded targets.
+/// A no-op ``/Diem/DiemCryptoBackend`` for use in tests and on Embedded targets.
 ///
 /// - ``supportedCryptoSets`` is empty — all crypto operations throw
-///   ``DiemError/unsupportedCryptoSet(_:)``.
+///   ``/Diem/DiemError/unsupportedCryptoSet(_:)``.
 /// - ``keyID(publicKey:)`` always returns 32 zero bytes.
 /// - ``generateRandomBytes(count:)`` always returns zero bytes.
 public struct MockCryptoBackend: DiemCryptoBackend, Sendable {

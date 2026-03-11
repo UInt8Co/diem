@@ -1,10 +1,11 @@
 import CBOR
+import Diem
 
 // MARK: - IdentityStore
 
-/// A store for ``Identity`` values, keyed by ``Profile/id``.
+/// A store for ``/Diem/Identity`` values, keyed by ``/Diem/Profile/id``.
 ///
-/// The store is generic over a single ``DiemCryptoBackend`` — all identities it manages
+/// The store is generic over a single ``/Diem/DiemCryptoBackend`` — all identities it manages
 /// share the same backend. Default implementations are provided for ``storeOrUpdate(_:)``,
 /// ``decrypt(_:)``, ``sign(_:identityID:cryptoSet:)``, and ``encrypt(_:to:cryptoSet:)``.
 public protocol IdentityStore: Sendable {
@@ -17,7 +18,7 @@ public protocol IdentityStore: Sendable {
 
   /// Stores a new identity.
   ///
-  /// - Throws: ``DiemError/alreadyExists`` if an identity with the same ``Profile/id``
+  /// - Throws: ``/Diem/DiemError/alreadyExists`` if an identity with the same ``/Diem/Profile/id``
   ///   already exists.
   func store(_ identity: Identity<Backend>) throws
 
@@ -52,10 +53,10 @@ extension IdentityStore {
 
   // MARK: Convenience: decrypt
 
-  /// Decrypts an ``EncryptedMessage`` by scanning all stored identities for a matching
+  /// Decrypts an ``/Diem/EncryptedMessage`` by scanning all stored identities for a matching
   /// key-agreement key.
   ///
-  /// - Throws: ``DiemError/keyNotFound`` if no identity owns the recipient key.
+  /// - Throws: ``/Diem/DiemError/keyNotFound`` if no identity owns the recipient key.
   public func decrypt(_ message: EncryptedMessage) throws -> CBOR {
     let identities = try allIdentities()
     for identity in identities {
@@ -73,7 +74,7 @@ extension IdentityStore {
 
   /// Signs `payload` using the signing key of the identity identified by `identityID`.
   ///
-  /// - Throws: ``DiemError/keyNotFound`` if the identity is not in the store.
+  /// - Throws: ``/Diem/DiemError/keyNotFound`` if the identity is not in the store.
   public func sign(_ payload: CBOR, identityID: [UInt8], cryptoSet: CryptoSet = .classic)
     throws -> SignedMessage
   {

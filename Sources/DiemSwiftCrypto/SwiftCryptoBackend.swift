@@ -4,13 +4,13 @@ import Foundation
 
 // MARK: - SwiftCryptoBackend
 
-/// A production-ready ``DiemCryptoBackend`` implemented using Swift Crypto.
+/// A production-ready ``/Diem/DiemCryptoBackend`` implemented using Swift Crypto.
 ///
-/// - ``CryptoSet/classic``: HPKE `Curve25519_SHA256_ChachaPoly` + Ed25519.
+/// - ``/Diem/CryptoSet/classic``: HPKE `Curve25519_SHA256_ChachaPoly` + Ed25519.
 ///   Available on all supported platforms (macOS 14+, iOS 17+, etc.).
-/// - ``CryptoSet/pqc``: HPKE `XWingMLKEM768X25519_SHA256_AES_GCM_256` + ML-DSA-65.
+/// - ``/Diem/CryptoSet/pqc``: HPKE `XWingMLKEM768X25519_SHA256_AES_GCM_256` + ML-DSA-65.
 ///   Available on macOS 26+ / iOS 26+. On older Apple OS, PQC operations throw
-///   ``DiemError/unsupportedCryptoSet(_:)``.
+///   ``/Diem/DiemError/unsupportedCryptoSet(_:)``.
 ///
 /// All private keys are stored as 32-byte seed representations:
 /// - Classic signing: `Curve25519.Signing.PrivateKey.rawRepresentation`

@@ -41,7 +41,7 @@ import Testing
       createdAt: 1_700_000_000)
     let summary = try store.update(updated)
     #expect(summary != nil)
-    #expect(summary?.createdAtChanged == true)
+    #expect(summary?.createdAtChange != nil)
     #expect(summary?.updated.name == "Alice Updated")
   }
 

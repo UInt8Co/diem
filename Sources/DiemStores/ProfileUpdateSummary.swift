@@ -1,6 +1,7 @@
 import CBOR
+import Diem
 
-/// Describes the differences observed when updating a ``Profile`` in a ``ProfileStore``.
+/// Describes the differences observed when updating a ``/Diem/Profile`` in a ``ProfileStore``.
 public struct ProfileUpdateSummary: Sendable {
   /// The new version of the profile that was stored.
   public let updated: Profile
@@ -8,26 +9,26 @@ public struct ProfileUpdateSummary: Sendable {
   public let addedKeys: [PublicKeyEntry]
   /// Keys present in the old profile that are absent from the new one.
   public let removedKeys: [PublicKeyEntry]
-  /// Whether ``Profile/createdAt`` changed.
-  public let createdAtChanged: Bool
-  /// Whether ``Profile/expiresAt`` changed.
-  public let expiresAtChanged: Bool
-  /// The old and new ``Profile/extensions`` CBOR values, or `nil` if they didn't change.
+  /// Whether ``/Diem/Profile/createdAt`` changed.
+  public let createdAtChange: (old: UInt64?, new: UInt64?)?
+  /// Whether ``/Diem/Profile/expiresAt`` changed.
+  public let expiresAtChange: (old: UInt64?, new: UInt64?)?
+  /// The old and new ``/Diem/Profile/extensions`` CBOR values, or `nil` if they didn't change.
   public let extensionsChange: (old: CBOR?, new: CBOR?)?
 
   public init(
     updated: Profile,
     addedKeys: [PublicKeyEntry],
     removedKeys: [PublicKeyEntry],
-    createdAtChanged: Bool,
-    expiresAtChanged: Bool,
+    createdAtChange: (old: UInt64?, new: UInt64?)?,
+    expiresAtChange: (old: UInt64?, new: UInt64?)?,
     extensionsChange: (old: CBOR?, new: CBOR?)?
   ) {
     self.updated = updated
     self.addedKeys = addedKeys
     self.removedKeys = removedKeys
-    self.createdAtChanged = createdAtChanged
-    self.expiresAtChanged = expiresAtChanged
+    self.createdAtChange = createdAtChange
+    self.expiresAtChange = expiresAtChange
     self.extensionsChange = extensionsChange
   }
 }
@@ -35,7 +36,7 @@ public struct ProfileUpdateSummary: Sendable {
 extension ProfileUpdateSummary {
   /// Returns `true` if any difference was recorded.
   public var hasChanges: Bool {
-    !addedKeys.isEmpty || !removedKeys.isEmpty || createdAtChanged || expiresAtChanged
+    !addedKeys.isEmpty || !removedKeys.isEmpty || createdAtChange != nil || expiresAtChange != nil
       || extensionsChange != nil
   }
 
@@ -55,8 +56,10 @@ extension ProfileUpdateSummary {
       updated: new,
       addedKeys: added,
       removedKeys: removed,
-      createdAtChanged: old.createdAt != new.createdAt,
-      expiresAtChanged: old.expiresAt != new.expiresAt,
+      createdAtChange: old.createdAt == new.createdAt
+        ? nil : (old: old.createdAt, new: new.createdAt),
+      expiresAtChange: old.expiresAt == new.expiresAt
+        ? nil : (old: old.expiresAt, new: new.expiresAt),
       extensionsChange: extensionsChange
     )
   }

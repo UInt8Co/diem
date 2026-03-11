@@ -2,10 +2,10 @@
 
 /// A pluggable cryptographic backend that performs the low-level operations required by Diem.
 ///
-/// Implementations must be `Sendable`.  The core `Diem` library ships with a
-/// ``MockCryptoBackend`` that compiles everywhere (including WASM Embedded) but refuses all
+/// Implementations must be `Sendable`.  The `DiemMocks` library ships with a
+/// `MockCryptoBackend` that compiles everywhere (including WASM Embedded) but refuses all
 /// operations.  A production-ready backend is provided by `DiemSwiftCrypto` as
-/// ``SwiftCryptoBackend``.
+/// `SwiftCryptoBackend`.
 ///
 /// All parameters and return values use `[UInt8]` to remain Foundation-free and
 /// embeddable.

@@ -1,6 +1,6 @@
 import DiemStores
 
-/// An in-memory ``ProfileStore`` with a secondary key-ID index for O(1) lookup.
+/// An in-memory ``/DiemStores/ProfileStore`` with a secondary key-ID index for O(1) lookup.
 ///
 /// Suitable for tests, short-lived processes, and Swift Embedded targets.
 /// Thread-safety is provided via `@unchecked Sendable` with manual dictionary management

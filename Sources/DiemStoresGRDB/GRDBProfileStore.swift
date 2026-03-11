@@ -1,11 +1,12 @@
+import Diem
 import DiemStores
 import Foundation
 import GRDB
 
-/// A GRDB-backed ``ProfileStore`` that persists ``Profile`` values in SQLite.
+/// A GRDB-backed ``/DiemStores/ProfileStore`` that persists ``/Diem/Profile`` values in SQLite.
 ///
 /// Profiles are stored as CBOR-encoded blobs in a `profiles` table. A secondary
-/// `profile_keys` table maps every ``PublicKeyEntry/id`` to its owning profile,
+/// `profile_keys` table maps every ``/Diem/PublicKeyEntry/id`` to its owning profile,
 /// enabling O(1) ``profile(forKeyID:)`` lookups without a full table scan.
 ///
 /// Both tables are created and migrated automatically.

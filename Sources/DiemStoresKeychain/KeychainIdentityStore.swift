@@ -1,4 +1,5 @@
 import CBOR
+import Diem
 import DiemStores
 import DiemSwiftCrypto
 
@@ -6,11 +7,11 @@ import DiemSwiftCrypto
   import Security
   import Foundation
 
-  /// A Keychain-backed ``IdentityStore`` for ``SwiftCryptoBackend`` identities.
+  /// A Keychain-backed ``/DiemStores/IdentityStore`` for ``/DiemSwiftCrypto/SwiftCryptoBackend`` identities.
   ///
   /// Each identity is stored as a `kSecClassGenericPassword` item:
   /// - `kSecAttrService`: the store's `service` identifier (configurable).
-  /// - `kSecAttrAccount`: the identity's ``Profile/hexID``.
+  /// - `kSecAttrAccount`: the identity's ``/Diem/Profile/hexID``.
   /// - `kSecValueData`: CBOR-encoded bytes of the form `{0: profile_cbor_bytes, 1: [[key_id, priv_key], ...]}`.
   ///
   /// All Keychain operations use synchronous `SecItem*` calls on the calling thread.
