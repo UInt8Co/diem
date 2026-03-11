@@ -2,9 +2,9 @@
 # Build the Foundation-free Diem targets in Swift Embedded mode targeting WASM.
 #
 # Requires:
-#   • swiftly with a Swift 6.3+ development snapshot active
+#   • Swift 6.3+ development snapshot on PATH (e.g. via swift-actions/setup-swift or swiftly)
 #   • The wasm32-unknown-none-wasm Swift SDK installed:
-#       swiftly run swift sdk install <url>
+#       swift sdk install <url>
 #     See: https://www.swift.org/documentation/embedded/
 
 set -euo pipefail
@@ -25,16 +25,16 @@ EXTRA=(
 )
 
 # Verify the SDK is installed before attempting any builds.
-if ! swiftly run swift sdk list 2>/dev/null | grep -qF "$SDK"; then
+if ! swift sdk list 2>/dev/null | grep -qF "$SDK"; then
   echo "error: Swift SDK '$SDK' is not installed." >&2
-  echo "  Install it with: swiftly run swift sdk install <wasm-sdk-url>" >&2
+  echo "  Install it with: swift sdk install <wasm-sdk-url>" >&2
   echo "  See: https://www.swift.org/documentation/embedded/" >&2
   exit 1
 fi
 
 for target in "${EMBEDDED_TARGETS[@]}"; do
   echo "→ $target (Embedded WASM)…"
-  swiftly run swift build \
+  swift build \
     --swift-sdk "$SDK" \
     --target "$target" \
     -c release \
