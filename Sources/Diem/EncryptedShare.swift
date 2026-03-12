@@ -29,7 +29,7 @@ import CBOR
 /// let share = try EncryptedShare.fromInvite(invitation, using: identity)
 /// let payload = try share.decrypt(ciphertext, using: backend)
 /// ```
-public struct EncryptedShare: Sendable {
+public struct EncryptedShare: Sendable, Identifiable {
   /// The symmetric encryption algorithm used for this share.
   public let crypto: Crypto
   /// The key ID (derived from the symmetric key).
@@ -42,6 +42,12 @@ public struct EncryptedShare: Sendable {
     self.keyID = keyID
     self.key = key
   }
+
+  /// Stable identifier for this share (same as ``keyID``).
+  public var id: [UInt8] { keyID }
+
+  /// Hexadecimal string representation of the key ID.
+  public var hexID: String { keyID.hexString }
 }
 
 // MARK: - Crypto enum

@@ -17,7 +17,7 @@ public enum KeyType: UInt64, Sendable, Hashable {
 /// Each entry carries a stable ``id`` (backend-defined fingerprint, typically SHA-256 of
 /// the raw public key), the key's ``keyType``, the ``cryptoSet`` it belongs to, and
 /// the raw public key bytes.
-public struct PublicKeyEntry: Sendable, Hashable {
+public struct PublicKeyEntry: Sendable, Hashable, Identifiable {
   /// A backend-defined fingerprint of ``rawBytes``, used as a stable identifier.
   public let id: [UInt8]
   /// Whether this is a signing or key-agreement key.
@@ -33,6 +33,9 @@ public struct PublicKeyEntry: Sendable, Hashable {
     self.cryptoSet = cryptoSet
     self.rawBytes = rawBytes
   }
+
+  /// Hexadecimal string representation of the key ID.
+  public var hexID: String { id.hexString }
 }
 
 extension PublicKeyEntry {
@@ -94,7 +97,7 @@ extension PublicKeyEntry {
 /// optional validity timestamps, and optional user-defined ``extensions`` as a CBOR value.
 ///
 /// Serialised as a CBOR map with integer keys.
-public struct Profile: Sendable {
+public struct Profile: Sendable, Identifiable {
   /// A stable 16-byte random identifier for this profile, generated at identity creation.
   public let id: [UInt8]
   /// The public key entries associated with this profile.
@@ -126,12 +129,7 @@ public struct Profile: Sendable {
 
   /// A lowercase hex string representation of ``id``, suitable for display and logging.
   public var hexID: String {
-    id.reduce(into: "") { result, byte in
-      let hi = (byte >> 4) & 0x0F
-      let lo = byte & 0x0F
-      result.append(Character(UnicodeScalar(hi < 10 ? 48 &+ hi : 87 &+ hi)))
-      result.append(Character(UnicodeScalar(lo < 10 ? 48 &+ lo : 87 &+ lo)))
-    }
+    id.hexString
   }
 }
 

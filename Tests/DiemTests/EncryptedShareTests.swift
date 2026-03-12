@@ -137,11 +137,12 @@ import Testing
 
     let message = try EncryptedMessage.encrypt(payload, to: share, using: backend)
 
-    #expect(message.shareCrypto == .aes256gcm)
-    #expect(message.shareKeyID == share.keyID)
-    #expect(message.cryptoSet == nil)
-    #expect(message.recipientKeyID == nil)
-    #expect(message.encapsulatedKey == nil)
+    if case .share(let crypto, let shareKeyID) = message.recipientType {
+      #expect(crypto == .aes256gcm)
+      #expect(shareKeyID == share.keyID)
+    } else {
+      Issue.record("Expected share recipient type")
+    }
   }
 
   @Test func encryptedMessageShareRoundtrip() throws {
@@ -152,8 +153,12 @@ import Testing
     let encoded = message.encode()
     let decoded = try EncryptedMessage.decode(encoded)
 
-    #expect(decoded.shareCrypto == share.crypto)
-    #expect(decoded.shareKeyID == share.keyID)
+    if case .share(let crypto, let shareKeyID) = decoded.recipientType {
+      #expect(crypto == share.crypto)
+      #expect(shareKeyID == share.keyID)
+    } else {
+      Issue.record("Expected share recipient type")
+    }
 
     let decrypted = try share.decrypt(decoded.ciphertext, using: backend)
     #expect(decrypted == payload)
@@ -223,8 +228,17 @@ import Testing
     // Bob can decrypt his private message
     #expect(try bob.decrypt(bobMessage) == bobPayload)
 
-    // Alice cannot decrypt Bob's private message (different encryption)
-    #expect(bobMessage.recipientKeyID != nil)  // Profile message
-    #expect(sharedMessage.shareKeyID != nil)   // Share message
+    // Verify message types are different
+    if case .profile = bobMessage.recipientType {
+      // Profile message - correct
+    } else {
+      Issue.record("Expected profile recipient type for bobMessage")
+    }
+
+    if case .share = sharedMessage.recipientType {
+      // Share message - correct
+    } else {
+      Issue.record("Expected share recipient type for sharedMessage")
+    }
   }
 }
