@@ -67,6 +67,32 @@ public protocol DiemCryptoBackend: Sendable {
     cryptoSet: CryptoSet
   ) throws -> [UInt8]
 
+  // MARK: Symmetric encryption
+
+  /// Encrypts `plaintext` using symmetric authenticated encryption.
+  ///
+  /// - Parameters:
+  ///   - plaintext: The data to encrypt.
+  ///   - key: The symmetric key (must match the key size for the algorithm).
+  ///   - crypto: The symmetric encryption algorithm to use.
+  /// - Returns: The authenticated ciphertext (including any nonce/IV and authentication tag).
+  /// - Throws: ``DiemError/encryptionFailed`` if encryption fails.
+  func symmetricEncrypt(
+    plaintext: [UInt8], key: [UInt8], crypto: EncryptedShare.Crypto
+  ) throws -> [UInt8]
+
+  /// Decrypts symmetric authenticated ciphertext.
+  ///
+  /// - Parameters:
+  ///   - ciphertext: The authenticated ciphertext to decrypt.
+  ///   - key: The symmetric key used for encryption.
+  ///   - crypto: The symmetric encryption algorithm that was used.
+  /// - Returns: The decrypted plaintext.
+  /// - Throws: ``DiemError/decryptionFailed`` if decryption or authentication fails.
+  func symmetricDecrypt(
+    ciphertext: [UInt8], key: [UInt8], crypto: EncryptedShare.Crypto
+  ) throws -> [UInt8]
+
   // MARK: Key ID
 
   /// Computes a stable, fixed-length identifier for the given raw public key bytes.

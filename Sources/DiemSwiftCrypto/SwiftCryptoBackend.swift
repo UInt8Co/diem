@@ -240,6 +240,95 @@ extension SwiftCryptoBackend {
   }
 }
 
+// MARK: - Symmetric encryption
+
+extension SwiftCryptoBackend {
+  public func symmetricEncrypt(
+    plaintext: [UInt8], key: [UInt8], crypto: EncryptedShare.Crypto
+  ) throws -> [UInt8] {
+    switch crypto {
+    case .aes256gcm:
+      return try _aes256gcmEncrypt(plaintext: plaintext, key: key)
+    }
+  }
+
+  public func symmetricDecrypt(
+    ciphertext: [UInt8], key: [UInt8], crypto: EncryptedShare.Crypto
+  ) throws -> [UInt8] {
+    switch crypto {
+    case .aes256gcm:
+      return try _aes256gcmDecrypt(ciphertext: ciphertext, key: key)
+    }
+  }
+
+  private func _aes256gcmEncrypt(plaintext: [UInt8], key: [UInt8]) throws -> [UInt8] {
+    let symKey: SymmetricKey
+    do {
+      symKey = SymmetricKey(data: key)
+    } catch {
+      throw DiemError.invalidKey
+    }
+
+    // Generate a random 12-byte nonce (96 bits, standard for GCM)
+    let nonce = AES.GCM.Nonce()
+
+    let sealedBox: AES.GCM.SealedBox
+    do {
+      sealedBox = try AES.GCM.seal(plaintext, using: symKey, nonce: nonce)
+    } catch {
+      throw DiemError.encryptionFailed
+    }
+
+    // Combine nonce + ciphertext + tag
+    // Format: [nonce (12 bytes)][ciphertext][tag (16 bytes)]
+    var result = [UInt8]()
+    result.append(contentsOf: sealedBox.nonce)
+    result.append(contentsOf: sealedBox.ciphertext)
+    result.append(contentsOf: sealedBox.tag)
+    return result
+  }
+
+  private func _aes256gcmDecrypt(ciphertext: [UInt8], key: [UInt8]) throws -> [UInt8] {
+    let symKey: SymmetricKey
+    do {
+      symKey = SymmetricKey(data: key)
+    } catch {
+      throw DiemError.invalidKey
+    }
+
+    // Extract nonce (12 bytes), ciphertext, and tag (16 bytes)
+    guard ciphertext.count >= 12 + 16 else {
+      throw DiemError.decryptionFailed
+    }
+
+    let nonceBytes = ciphertext[0..<12]
+    let tagStart = ciphertext.count - 16
+    let ciphertextBytes = ciphertext[12..<tagStart]
+    let tagBytes = ciphertext[tagStart...]
+
+    let nonce: AES.GCM.Nonce
+    do {
+      nonce = try AES.GCM.Nonce(data: Data(nonceBytes))
+    } catch {
+      throw DiemError.decryptionFailed
+    }
+
+    let sealedBox: AES.GCM.SealedBox
+    do {
+      sealedBox = try AES.GCM.SealedBox(nonce: nonce, ciphertext: Data(ciphertextBytes), tag: Data(tagBytes))
+    } catch {
+      throw DiemError.decryptionFailed
+    }
+
+    do {
+      let plaintext = try AES.GCM.open(sealedBox, using: symKey)
+      return [UInt8](plaintext)
+    } catch {
+      throw DiemError.decryptionFailed
+    }
+  }
+}
+
 // MARK: - Key ID
 
 extension SwiftCryptoBackend {

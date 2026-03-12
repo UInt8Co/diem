@@ -46,6 +46,18 @@ public struct MockCryptoBackend: DiemCryptoBackend, Sendable {
     throw DiemError.unsupportedCryptoSet(cryptoSet)
   }
 
+  public func symmetricEncrypt(
+    plaintext: [UInt8], key: [UInt8], crypto: EncryptedShare.Crypto
+  ) throws -> [UInt8] {
+    throw DiemError.encryptionFailed
+  }
+
+  public func symmetricDecrypt(
+    ciphertext: [UInt8], key: [UInt8], crypto: EncryptedShare.Crypto
+  ) throws -> [UInt8] {
+    throw DiemError.decryptionFailed
+  }
+
   public func keyID(publicKey: [UInt8]) -> [UInt8] {
     [UInt8](repeating: 0, count: 32)
   }
