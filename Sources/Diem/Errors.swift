@@ -18,4 +18,6 @@ public enum DiemError: Error, Sendable, Equatable {
   case unsupportedCryptoSet(CryptoSet)
   /// An item with this ID already exists in the store.
   case alreadyExists
+  /// Signature verification failed — the message was not signed by the expected key.
+  case verificationFailed
 }

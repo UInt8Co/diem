@@ -123,6 +123,48 @@ extension Identity {
   }
 }
 
+// MARK: - Sign and encrypt
+
+extension Identity {
+  /// Signs `payload` and encrypts the resulting ``SignedMessage`` for `recipient` in one step,
+  /// automatically negotiating the best shared crypto set.
+  ///
+  /// Picks the highest-priority crypto set for which this identity has both a signing key and
+  /// a key-agreement key, and the recipient's profile has a key-agreement key, preferring
+  /// ``CryptoSet/pqc`` over ``CryptoSet/classic``.
+  ///
+  /// - Throws: ``DiemError/keyNotFound`` if no common crypto set can be negotiated.
+  public func signAndEncrypt(_ payload: CBOR, to recipient: Profile) throws -> EncryptedSignedMessage {
+    let senderSets = Set(
+      profile.keys.filter { $0.keyType == .signing }.map { $0.cryptoSet }
+    ).intersection(
+      profile.keys.filter { $0.keyType == .keyAgreement }.map { $0.cryptoSet }
+    )
+    let recipientSets = Set(recipient.keys.filter { $0.keyType == .keyAgreement }.map { $0.cryptoSet })
+    let cryptoSet = try CryptoSet.negotiate(between: senderSets, and: recipientSets)
+    return try signAndEncrypt(payload, to: recipient, cryptoSet: cryptoSet)
+  }
+
+  /// Signs `payload` and encrypts the resulting ``SignedMessage`` for `recipient` in one step,
+  /// using an explicit `cryptoSet` for both signing and encryption.
+  ///
+  /// - Parameters:
+  ///   - payload: The CBOR value to sign and encrypt.
+  ///   - recipient: The recipient's ``Profile`` to encrypt the message for.
+  ///   - cryptoSet: Which crypto set to use for both signing and encryption.
+  /// - Returns: An ``EncryptedSignedMessage`` addressed to `recipient`.
+  /// - Throws: ``DiemError/unsupportedCryptoSet(_:)`` if the backend doesn't support the set,
+  ///           ``DiemError/keyNotFound`` if a required key is absent.
+  public func signAndEncrypt(
+    _ payload: CBOR,
+    to recipient: Profile,
+    cryptoSet: CryptoSet
+  ) throws -> EncryptedSignedMessage {
+    let signed = try sign(payload, cryptoSet: cryptoSet)
+    return try EncryptedSignedMessage.encrypt(signed, to: recipient, cryptoSet: cryptoSet, using: backend)
+  }
+}
+
 // MARK: - Decryption
 
 extension Identity {

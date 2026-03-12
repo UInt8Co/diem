@@ -15,3 +15,23 @@ public enum CryptoSet: UInt64, Sendable, Hashable, CaseIterable {
   /// Post-quantum cryptography using X-Wing (ML-KEM-768 + X25519) and ML-DSA-65.
   case pqc = 1
 }
+
+// MARK: - Negotiation
+
+extension CryptoSet {
+  /// The preference order used for automatic crypto set negotiation: ``pqc`` before ``classic``.
+  public static let preferenceOrder: [CryptoSet] = [.pqc, .classic]
+
+  /// Returns the highest-priority crypto set present in both `senderSets` and `recipientSets`.
+  ///
+  /// Preference order is ``pqc`` before ``classic``.
+  ///
+  /// - Throws: ``DiemError/keyNotFound`` if the two sets share no common crypto set.
+  public static func negotiate(
+    between senderSets: Set<CryptoSet>, and recipientSets: Set<CryptoSet>
+  ) throws -> CryptoSet {
+    let common = senderSets.intersection(recipientSets)
+    for set in preferenceOrder where common.contains(set) { return set }
+    throw DiemError.keyNotFound
+  }
+}

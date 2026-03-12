@@ -88,6 +88,22 @@ extension EncryptedMessage {
     }
     return try encrypt(payload, to: kaKey, using: backend)
   }
+
+  /// Encrypts `payload` for a `Profile`, automatically negotiating the best shared crypto set.
+  ///
+  /// Picks the highest-priority crypto set that both the backend and the recipient support,
+  /// preferring ``CryptoSet/pqc`` over ``CryptoSet/classic``.
+  ///
+  /// - Throws: ``DiemError/keyNotFound`` if no common crypto set can be found.
+  public static func encrypt<Backend: DiemCryptoBackend>(
+    _ payload: CBOR,
+    to recipient: Profile,
+    using backend: Backend
+  ) throws -> EncryptedMessage {
+    let recipientSets = Set(recipient.keys.filter { $0.keyType == .keyAgreement }.map { $0.cryptoSet })
+    let cryptoSet = try CryptoSet.negotiate(between: backend.supportedCryptoSets, and: recipientSets)
+    return try encrypt(payload, to: recipient, cryptoSet: cryptoSet, using: backend)
+  }
 }
 
 // MARK: - CBOR serialisation
