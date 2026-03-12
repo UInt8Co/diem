@@ -170,6 +170,10 @@ extension Identity {
 extension Identity {
   /// Decrypts an ``EncryptedMessage`` addressed to this identity.
   ///
+  /// This method only handles messages encrypted for a Profile (using HPKE).
+  /// Messages encrypted for an ``EncryptedShare`` must be decrypted using
+  /// ``EncryptedShare/decrypt(_:using:)``.
+  ///
   /// Matches ``EncryptedMessage/recipientKeyID`` against the identity's key-agreement keys, then
   /// delegates HPKE decryption to the backend.
   ///
@@ -178,13 +182,18 @@ extension Identity {
   /// - Throws: ``DiemError/unsupportedCryptoSet(_:)``, ``DiemError/keyNotFound``,
   ///           ``DiemError/decryptionFailed``, or ``DiemError/invalidCBOR``.
   public func decrypt(_ message: EncryptedMessage) throws -> CBOR {
-    guard backend.supportedCryptoSets.contains(message.cryptoSet) else {
-      throw DiemError.unsupportedCryptoSet(message.cryptoSet)
+    // Only handle Profile-type messages
+    guard case .profile(let cryptoSet, let recipientKeyID, let encapsulatedKey) = message.recipientType else {
+      throw DiemError.keyNotFound
+    }
+
+    guard backend.supportedCryptoSets.contains(cryptoSet) else {
+      throw DiemError.unsupportedCryptoSet(cryptoSet)
     }
     guard
       let kaKey = profile.keys.first(where: {
-        $0.id == message.recipientKeyID && $0.keyType == .keyAgreement
-          && $0.cryptoSet == message.cryptoSet
+        $0.id == recipientKeyID && $0.keyType == .keyAgreement
+          && $0.cryptoSet == cryptoSet
       })
     else {
       throw DiemError.keyNotFound
@@ -194,9 +203,9 @@ extension Identity {
     }
     let plaintext = try backend.hpkeDecrypt(
       ciphertext: message.ciphertext,
-      encapsulatedKey: message.encapsulatedKey,
+      encapsulatedKey: encapsulatedKey,
       recipientPrivateKey: privKeyBytes,
-      cryptoSet: message.cryptoSet)
+      cryptoSet: cryptoSet)
     do {
       return try CBOR.decode(plaintext)
     } catch {

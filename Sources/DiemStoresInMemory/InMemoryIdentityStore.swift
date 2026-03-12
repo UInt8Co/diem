@@ -48,8 +48,17 @@ public final class InMemoryIdentityStore<B: DiemCryptoBackend>: IdentityStore,
   // MARK: - Efficient decrypt using key index
 
   /// Decrypts an ``/Diem/EncryptedMessage`` using the key-ID index for O(1) identity lookup.
+  ///
+  /// This method only handles messages encrypted for a Profile (using HPKE).
+  /// Messages encrypted for an ``EncryptedShare`` must be decrypted using
+  /// ``EncryptedShare/decrypt(_:using:)``.
   public func decrypt(_ message: EncryptedMessage) throws -> CBOR {
-    guard let profileID = keyIndex[message.recipientKeyID] else {
+    // Only handle Profile-type messages
+    guard case .profile(_, let recipientKeyID, _) = message.recipientType else {
+      throw DiemError.keyNotFound
+    }
+
+    guard let profileID = keyIndex[recipientKeyID] else {
       throw DiemError.keyNotFound
     }
     guard let identity = identities[profileID] else {

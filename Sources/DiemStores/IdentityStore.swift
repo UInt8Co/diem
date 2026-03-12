@@ -56,13 +56,22 @@ extension IdentityStore {
   /// Decrypts an ``/Diem/EncryptedMessage`` by scanning all stored identities for a matching
   /// key-agreement key.
   ///
+  /// This method only handles messages encrypted for a Profile (using HPKE).
+  /// Messages encrypted for an ``EncryptedShare`` must be decrypted using
+  /// ``EncryptedShare/decrypt(_:using:)``.
+  ///
   /// - Throws: ``/Diem/DiemError/keyNotFound`` if no identity owns the recipient key.
   public func decrypt(_ message: EncryptedMessage) throws -> CBOR {
+    // Only handle Profile-type messages
+    guard case .profile(let cryptoSet, let recipientKeyID, _) = message.recipientType else {
+      throw DiemError.keyNotFound
+    }
+
     let identities = try allIdentities()
     for identity in identities {
       if identity.profile.keys.contains(where: {
-        $0.id == message.recipientKeyID && $0.keyType == .keyAgreement
-          && $0.cryptoSet == message.cryptoSet
+        $0.id == recipientKeyID && $0.keyType == .keyAgreement
+          && $0.cryptoSet == cryptoSet
       }) {
         return try identity.decrypt(message)
       }
