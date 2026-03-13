@@ -332,10 +332,10 @@ extension SwiftCryptoBackend {
 // MARK: - Key ID
 
 extension SwiftCryptoBackend {
-  /// Returns the SHA-256 digest of `publicKey` as a 32-byte stable identifier.
-  public func keyID(publicKey: [UInt8]) -> [UInt8] {
+  /// Returns the SHA-256 digest of `key` as a 32-byte stable identifier.
+  public func keyID(of key: [UInt8]) -> [UInt8] {
     var hasher = SHA256()
-    publicKey.withUnsafeBufferPointer { ptr in
+    key.withUnsafeBufferPointer { ptr in
       hasher.update(bufferPointer: UnsafeRawBufferPointer(ptr))
     }
     return [UInt8](hasher.finalize())

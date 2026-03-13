@@ -5,14 +5,14 @@ import Testing
   let backend = SwiftCryptoBackend()
 
   @Test func generateShare() throws {
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
     #expect(share.crypto == .aes256gcm)
     #expect(share.key.count == 32)  // AES-256 uses 32-byte keys
     #expect(share.keyID.count == 32)
   }
 
   @Test func encryptDecrypt() throws {
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
     let payload: CBOR = .textString("hello, world")
     let ciphertext = try share.encrypt(payload, using: backend)
     #expect(ciphertext.count > 0)
@@ -21,7 +21,7 @@ import Testing
   }
 
   @Test func encryptDecryptComplexPayload() throws {
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
     let payload: CBOR = .map([
       CBORMapPair(key: .textString("name"), value: .textString("Alice")),
       CBORMapPair(key: .textString("age"), value: .unsignedInt(30)),
@@ -33,8 +33,8 @@ import Testing
   }
 
   @Test func wrongKeyDecryptionFails() throws {
-    let share1 = EncryptedShare.generate(using: backend)
-    let share2 = EncryptedShare.generate(using: backend)
+    let share1 = EncryptedShare(using: backend)
+    let share2 = EncryptedShare(using: backend)
     let payload: CBOR = .textString("secret")
     let ciphertext = try share1.encrypt(payload, using: backend)
     #expect(throws: DiemError.decryptionFailed) {
@@ -48,7 +48,7 @@ import Testing
       $0.keyType == .keyAgreement && $0.cryptoSet == .classic
     })!
 
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
     let invitation = try share.invite(aliceKA, using: backend)
 
     #expect(invitation.cryptoSet == .classic)
@@ -58,7 +58,7 @@ import Testing
 
   @Test func inviteToProfileWithCryptoSet() throws {
     let alice = try Identity(name: "Alice", cryptoSets: [.classic, .pqc], using: backend)
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
 
     let invitation = try share.invite(alice.profile, cryptoSet: .classic, using: backend)
     #expect(invitation.cryptoSet == .classic)
@@ -66,7 +66,7 @@ import Testing
 
   @Test func inviteToProfileAutoNegotiation() throws {
     let alice = try Identity(name: "Alice", cryptoSets: [.classic, .pqc], using: backend)
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
 
     let invitation = try share.invite(alice.profile, using: backend)
     // Should prefer PQC when both support it
@@ -75,7 +75,7 @@ import Testing
 
   @Test func inviteToProfileClassicOnly() throws {
     let alice = try Identity(name: "Alice", cryptoSets: [.classic], using: backend)
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
 
     let invitation = try share.invite(alice.profile, using: backend)
     #expect(invitation.cryptoSet == .classic)
@@ -83,10 +83,10 @@ import Testing
 
   @Test func fromInvite() throws {
     let alice = try Identity(name: "Alice", cryptoSets: [.classic], using: backend)
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
 
     let invitation = try share.invite(alice.profile, cryptoSet: .classic, using: backend)
-    let receivedShare = try EncryptedShare.fromInvite(invitation, using: alice)
+    let receivedShare = try EncryptedShare(invitation: invitation, using: alice)
 
     #expect(receivedShare.crypto == share.crypto)
     #expect(receivedShare.key == share.key)
@@ -98,7 +98,7 @@ import Testing
     let bob = try Identity(name: "Bob", cryptoSets: [.classic], using: backend)
 
     // Create a share and encrypt a message
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
     let payload: CBOR = .textString("shared secret message")
     let ciphertext = try share.encrypt(payload, using: backend)
 
@@ -107,8 +107,8 @@ import Testing
     let bobInvite = try share.invite(bob.profile, using: backend)
 
     // Both should be able to accept and decrypt
-    let aliceShare = try EncryptedShare.fromInvite(aliceInvite, using: alice)
-    let bobShare = try EncryptedShare.fromInvite(bobInvite, using: bob)
+    let aliceShare = try EncryptedShare(invitation: aliceInvite, using: alice)
+    let bobShare = try EncryptedShare(invitation: bobInvite, using: bob)
 
     let aliceDecrypted = try aliceShare.decrypt(ciphertext, using: backend)
     let bobDecrypted = try bobShare.decrypt(ciphertext, using: backend)
@@ -118,9 +118,9 @@ import Testing
   }
 
   @Test func cborRoundtrip() throws {
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
     let encoded = share.encode()
-    let decoded = try EncryptedShare.decode(encoded)
+    let decoded = try EncryptedShare.decode(encoded, using: backend)
 
     #expect(decoded.crypto == share.crypto)
     #expect(decoded.key == share.key)
@@ -132,30 +132,30 @@ import Testing
   }
 
   @Test func encryptedMessageToShare() throws {
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
     let payload: CBOR = .textString("test message")
 
     let message = try EncryptedMessage.encrypt(payload, to: share, using: backend)
 
-    if case .share(let crypto, let shareKeyID) = message.recipientType {
+    if case .share(let crypto, let keyID) = message.recipient {
       #expect(crypto == .aes256gcm)
-      #expect(shareKeyID == share.keyID)
+      #expect(keyID == share.keyID)
     } else {
       Issue.record("Expected share recipient type")
     }
   }
 
   @Test func encryptedMessageShareRoundtrip() throws {
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
     let payload: CBOR = .unsignedInt(42)
 
     let message = try EncryptedMessage.encrypt(payload, to: share, using: backend)
     let encoded = message.encode()
     let decoded = try EncryptedMessage.decode(encoded)
 
-    if case .share(let crypto, let shareKeyID) = decoded.recipientType {
+    if case .share(let crypto, let keyID) = decoded.recipient {
       #expect(crypto == share.crypto)
-      #expect(shareKeyID == share.keyID)
+      #expect(keyID == share.keyID)
     } else {
       Issue.record("Expected share recipient type")
     }
@@ -170,7 +170,7 @@ import Testing
     let charlie = try Identity(name: "Charlie", cryptoSets: [.pqc], using: backend)
 
     // Create a share
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
 
     // Encrypt multiple messages for the group
     let message1: CBOR = .textString("First message")
@@ -187,9 +187,9 @@ import Testing
     let charlieInvite = try share.invite(charlie.profile, using: backend)
 
     // All recipients accept invitations
-    let aliceShare = try EncryptedShare.fromInvite(aliceInvite, using: alice)
-    let bobShare = try EncryptedShare.fromInvite(bobInvite, using: bob)
-    let charlieShare = try EncryptedShare.fromInvite(charlieInvite, using: charlie)
+    let aliceShare = try EncryptedShare(invitation: aliceInvite, using: alice)
+    let bobShare = try EncryptedShare(invitation: bobInvite, using: bob)
+    let charlieShare = try EncryptedShare(invitation: charlieInvite, using: charlie)
 
     // All can decrypt all messages
     #expect(try aliceShare.decrypt(encrypted1.ciphertext, using: backend) == message1)
@@ -210,9 +210,9 @@ import Testing
     let bob = try Identity(name: "Bob", cryptoSets: [.classic], using: backend)
 
     // Create a share and invite Alice
-    let share = EncryptedShare.generate(using: backend)
+    let share = EncryptedShare(using: backend)
     let aliceInvite = try share.invite(alice.profile, using: backend)
-    let aliceShare = try EncryptedShare.fromInvite(aliceInvite, using: alice)
+    let aliceShare = try EncryptedShare(invitation: aliceInvite, using: alice)
 
     // Send one message to the share (Alice can read)
     let sharedPayload: CBOR = .textString("group message")
@@ -229,13 +229,13 @@ import Testing
     #expect(try bob.decrypt(bobMessage) == bobPayload)
 
     // Verify message types are different
-    if case .profile = bobMessage.recipientType {
+    if case .profile = bobMessage.recipient {
       // Profile message - correct
     } else {
       Issue.record("Expected profile recipient type for bobMessage")
     }
 
-    if case .share = sharedMessage.recipientType {
+    if case .share = sharedMessage.recipient {
       // Share message - correct
     } else {
       Issue.record("Expected share recipient type for sharedMessage")

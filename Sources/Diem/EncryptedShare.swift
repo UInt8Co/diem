@@ -10,7 +10,7 @@ import CBOR
 ///
 /// ## Creating a new share
 /// ```swift
-/// let share = try EncryptedShare.generate(using: backend)
+/// let share = EncryptedShare(using: backend)
 /// ```
 ///
 /// ## Encrypting data
@@ -26,7 +26,7 @@ import CBOR
 ///
 /// ## Accepting an invitation
 /// ```swift
-/// let share = try EncryptedShare.fromInvite(invitation, using: identity)
+/// let share = try EncryptedShare(invitation: invitation, using: identity)
 /// let payload = try share.decrypt(ciphertext, using: backend)
 /// ```
 public struct EncryptedShare: Sendable, Identifiable {
@@ -90,14 +90,13 @@ extension EncryptedShare {
   /// - Parameters:
   ///   - crypto: The symmetric encryption algorithm to use. Defaults to ``Crypto/aes256gcm``.
   ///   - backend: The crypto backend to use for key generation.
-  /// - Returns: A new share with a randomly generated key.
-  public static func generate<Backend: DiemCryptoBackend>(
+  public init<Backend: DiemCryptoBackend>(
     crypto: Crypto = .aes256gcm,
     using backend: Backend
-  ) -> EncryptedShare {
+  ) {
     let key = backend.generateRandomBytes(count: crypto.keySize)
-    let keyID = backend.keyID(publicKey: key)
-    return EncryptedShare(crypto: crypto, keyID: keyID, key: key)
+    let keyID = backend.keyID(of: key)
+    self.init(crypto: crypto, keyID: keyID, key: key)
   }
 }
 
@@ -208,14 +207,13 @@ extension EncryptedShare {
   /// - Parameters:
   ///   - invitation: An ``EncryptedMessage`` containing the encrypted share.
   ///   - identity: The recipient's identity used for decryption.
-  /// - Returns: The decrypted share.
   /// - Throws: Decryption or CBOR decoding errors.
-  public static func fromInvite<Backend: DiemCryptoBackend>(
-    _ invitation: EncryptedMessage,
+  public init<Backend: DiemCryptoBackend>(
+    invitation: EncryptedMessage,
     using identity: Identity<Backend>
-  ) throws -> EncryptedShare {
+  ) throws {
     let cbor = try identity.decrypt(invitation)
-    return try fromCBOR(cbor)
+    self = try EncryptedShare(cbor: cbor, using: identity.backend)
   }
 }
 
@@ -241,8 +239,13 @@ extension EncryptedShare {
     ])
   }
 
-  /// Decodes an ``EncryptedShare`` from a CBOR map.
-  public static func fromCBOR(_ cbor: CBOR) throws -> EncryptedShare {
+  /// Decodes an ``EncryptedShare`` from a CBOR map using the provided backend to compute the key ID.
+  ///
+  /// - Parameters:
+  ///   - cbor: The CBOR map to decode.
+  ///   - backend: The crypto backend used to derive the key ID from the symmetric key.
+  /// - Throws: ``DiemError/invalidCBOR`` or ``DiemError/missingField(_:)`` if decoding fails.
+  public init<Backend: DiemCryptoBackend>(cbor: CBOR, using backend: Backend) throws {
     guard let pairs = try cbor.mapValue() else { throw DiemError.invalidCBOR }
     var cryptoRaw: UInt64?
     var key: [UInt8]?
@@ -261,38 +264,26 @@ extension EncryptedShare {
       throw DiemError.missingField("EncryptedShare: crypto or key missing")
     }
     guard let crypto = Crypto(rawValue: cryptoRaw) else { throw DiemError.invalidCBOR }
-    // Derive key ID from key (we don't store it separately for security)
-    // We need a backend to compute the key ID, but for now we'll create a temporary one
-    // This is a bit of a design issue - we'll need to pass backend to fromCBOR
-    // For now, let's use a simple SHA-256 approach inline
-    let keyID = _computeKeyID(key)
-    return EncryptedShare(crypto: crypto, keyID: keyID, key: key)
+    // Derive key ID from key using the backend
+    let keyID = backend.keyID(of: key)
+    self.init(crypto: crypto, keyID: keyID, key: key)
   }
 
   /// Serialises this share to CBOR bytes.
   public func encode() -> [UInt8] { toCBOR().encode() }
 
-  /// Deserialises an ``EncryptedShare`` from CBOR bytes.
-  public static func decode(_ bytes: [UInt8]) throws -> EncryptedShare {
+  /// Deserialises an ``EncryptedShare`` from CBOR bytes using the provided backend.
+  ///
+  /// - Parameters:
+  ///   - bytes: The CBOR-encoded bytes.
+  ///   - backend: The crypto backend used to derive the key ID.
+  /// - Throws: ``DiemError/invalidCBOR`` or decoding errors.
+  public static func decode<Backend: DiemCryptoBackend>(
+    _ bytes: [UInt8],
+    using backend: Backend
+  ) throws -> EncryptedShare {
     let cbor: CBOR
     do { cbor = try CBOR.decode(bytes) } catch { throw DiemError.invalidCBOR }
-    return try fromCBOR(cbor)
+    return try EncryptedShare(cbor: cbor, using: backend)
   }
-}
-
-// MARK: - Helper to compute key ID from symmetric key
-
-// Simple XOR-based hash for key ID computation (Foundation-free)
-// This is used when deserializing without access to a backend
-private func _computeKeyID(_ key: [UInt8]) -> [UInt8] {
-  var result = [UInt8](repeating: 0, count: 32)
-  for (index, byte) in key.enumerated() {
-    result[index % 32] ^= byte
-  }
-  // Mix in the length to avoid collisions
-  let lengthByte = UInt8(truncatingIfNeeded: key.count)
-  for i in 0..<32 {
-    result[i] ^= lengthByte
-  }
-  return result
 }

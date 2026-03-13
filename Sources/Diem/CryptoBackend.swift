@@ -95,11 +95,12 @@ public protocol DiemCryptoBackend: Sendable {
 
   // MARK: Key ID
 
-  /// Computes a stable, fixed-length identifier for the given raw public key bytes.
+  /// Computes a stable, fixed-length identifier for the given raw key bytes.
   ///
   /// The identifier is used as the ``PublicKeyEntry/id`` and as the key in
-  /// ``Identity/privateKeysByKeyID``.  A typical implementation returns SHA-256(publicKey).
-  func keyID(publicKey: [UInt8]) -> [UInt8]
+  /// ``Identity/privateKeysByKeyID``. For symmetric keys in ``EncryptedShare``,
+  /// this is also used to compute the key ID. A typical implementation returns SHA-256(key).
+  func keyID(of key: [UInt8]) -> [UInt8]
 
   // MARK: Random bytes
 

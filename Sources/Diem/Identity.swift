@@ -9,7 +9,9 @@ import CBOR
 ///
 /// Private keys are stored as raw bytes keyed by their public key ID, enabling identities
 /// that carry keys for multiple crypto sets.
-public struct Identity<Backend: DiemCryptoBackend>: Sendable {
+public struct Identity<Backend: DiemCryptoBackend>: Sendable, Identifiable {
+  public var id: [UInt8] { profile.id }
+
   /// The public profile derived from this identity's key pairs.
   public let profile: Profile
   /// The crypto backend used for all operations.
@@ -46,12 +48,12 @@ extension Identity {
     var store: [[UInt8]: [UInt8]] = [:]
     for set in sets {
       let (sigPub, sigPriv) = try backend.generateSigningKeyPair(for: set)
-      let sigID = backend.keyID(publicKey: sigPub)
+      let sigID = backend.keyID(of: sigPub)
       keys.append(PublicKeyEntry(id: sigID, keyType: .signing, cryptoSet: set, rawBytes: sigPub))
       store[sigID] = sigPriv
 
       let (kaPub, kaPriv) = try backend.generateEncryptionKeyPair(for: set)
-      let kaID = backend.keyID(publicKey: kaPub)
+      let kaID = backend.keyID(of: kaPub)
       keys.append(
         PublicKeyEntry(id: kaID, keyType: .keyAgreement, cryptoSet: set, rawBytes: kaPub))
       store[kaID] = kaPriv
@@ -174,17 +176,18 @@ extension Identity {
   /// Messages encrypted for an ``EncryptedShare`` must be decrypted using
   /// ``EncryptedShare/decrypt(_:using:)``.
   ///
-  /// Matches ``EncryptedMessage/recipientKeyID`` against the identity's key-agreement keys, then
+  /// Matches ``EncryptedMessage/recipient`` against the identity's key-agreement keys, then
   /// delegates HPKE decryption to the backend.
   ///
   /// - Parameter message: The encrypted message to decrypt.
   /// - Returns: The decrypted CBOR payload.
   /// - Throws: ``DiemError/unsupportedCryptoSet(_:)``, ``DiemError/keyNotFound``,
-  ///           ``DiemError/decryptionFailed``, or ``DiemError/invalidCBOR``.
+  ///           ``DiemError/decryptionFailed``, ``DiemError/invalidCBOR``, or
+  ///           ``DiemError/messageIsForShare`` if the message is encrypted for a share.
   public func decrypt(_ message: EncryptedMessage) throws -> CBOR {
-    // Only handle Profile-type messages
-    guard case .profile(let cryptoSet, let recipientKeyID, let encapsulatedKey) = message.recipientType else {
-      throw DiemError.keyNotFound
+    // Only handle key-type messages
+    guard case .key(let cryptoSet, let keyID, let encapsulatedKey) = message.recipient else {
+      throw DiemError.messageIsForShare
     }
 
     guard backend.supportedCryptoSets.contains(cryptoSet) else {
@@ -192,7 +195,7 @@ extension Identity {
     }
     guard
       let kaKey = profile.keys.first(where: {
-        $0.id == recipientKeyID && $0.keyType == .keyAgreement
+        $0.id == keyID && $0.keyType == .keyAgreement
           && $0.cryptoSet == cryptoSet
       })
     else {

@@ -58,7 +58,7 @@ public struct MockCryptoBackend: DiemCryptoBackend, Sendable {
     throw DiemError.decryptionFailed
   }
 
-  public func keyID(publicKey: [UInt8]) -> [UInt8] {
+  public func keyID(of key: [UInt8]) -> [UInt8] {
     [UInt8](repeating: 0, count: 32)
   }
 

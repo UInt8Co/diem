@@ -20,4 +20,6 @@ public enum DiemError: Error, Sendable, Equatable {
   case alreadyExists
   /// Signature verification failed — the message was not signed by the expected key.
   case verificationFailed
+  /// The message is encrypted for an EncryptedShare, not for a Profile.
+  case messageIsForShare
 }
