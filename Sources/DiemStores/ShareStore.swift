@@ -54,4 +54,51 @@ extension ShareStore {
       return false
     }
   }
+
+  // MARK: Convenience: encrypt for a stored share
+
+  /// Encrypts `payload` using the share identified by `keyID`.
+  ///
+  /// - Parameters:
+  ///   - payload: The CBOR value to encrypt.
+  ///   - keyID: The key ID of the share to use for encryption.
+  ///   - backend: The crypto backend to use.
+  /// - Returns: An ``/Diem/EncryptedMessage`` encrypted with the share's symmetric key.
+  /// - Throws: ``/Diem/DiemError/keyNotFound`` if no share with the given key ID exists.
+  public func encrypt<B: DiemCryptoBackend>(
+    _ payload: CBOR,
+    toShareWithKeyID keyID: [UInt8],
+    using backend: B
+  ) throws -> EncryptedMessage {
+    guard let share = try self.share(for: keyID) else { throw DiemError.keyNotFound }
+    return try EncryptedMessage.encrypt(payload, to: share, using: backend)
+  }
+
+  // MARK: Convenience: decrypt using a stored share
+
+  /// Decrypts an ``/Diem/EncryptedMessage`` using a stored share.
+  ///
+  /// This method automatically looks up the share by the message's recipient key ID.
+  ///
+  /// - Parameters:
+  ///   - message: The encrypted message to decrypt.
+  ///   - backend: The crypto backend to use.
+  /// - Returns: The decrypted CBOR payload.
+  /// - Throws: ``/Diem/DiemError/keyNotFound`` if no matching share exists,
+  ///           ``/Diem/DiemError/unexpectedMessageRecipientType`` if the message is not for a share,
+  ///           or decryption errors.
+  public func decrypt<B: DiemCryptoBackend>(
+    _ message: EncryptedMessage,
+    using backend: B
+  ) throws -> CBOR {
+    // Only handle share-type messages
+    guard case .share(_, let keyID) = message.recipient else {
+      throw DiemError.unexpectedMessageRecipientType
+    }
+
+    guard let share = try self.share(for: keyID) else {
+      throw DiemError.keyNotFound
+    }
+    return try share.decrypt(message.ciphertext, using: backend)
+  }
 }

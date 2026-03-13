@@ -21,18 +21,16 @@ import DiemSwiftCrypto
       /// The Keychain service attribute value used to namespace items.
       public let service: String
 
-      /// Whether to enable data protection (kSecAttrAccessible).
-      /// When true, uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`.
-      /// When false, uses `kSecAttrAccessibleAlways`.
-      public let useDataProtection: Bool
-
       /// Whether items should sync via iCloud Keychain.
       /// Sets `kSecAttrSynchronizable`.
       public let syncable: Bool
 
       /// The accessibility level for Keychain items.
-      /// Only used when `useDataProtection` is true.
       public let accessibility: Accessibility
+
+      /// The access group for keychain items.
+      /// Sets `kSecAttrAccessGroup` to enable sharing between apps in the same group.
+      public let accessGroup: String?
 
       /// Keychain accessibility levels.
       public enum Accessibility: Sendable {
@@ -65,14 +63,14 @@ import DiemSwiftCrypto
 
       public init(
         service: String = "diem.shares",
-        useDataProtection: Bool = true,
         syncable: Bool = false,
-        accessibility: Accessibility = .afterFirstUnlockThisDeviceOnly
+        accessibility: Accessibility = .afterFirstUnlockThisDeviceOnly,
+        accessGroup: String? = nil
       ) {
         self.service = service
-        self.useDataProtection = useDataProtection
         self.syncable = syncable
         self.accessibility = accessibility
+        self.accessGroup = accessGroup
       }
     }
 
@@ -108,7 +106,7 @@ import DiemSwiftCrypto
     }
 
     public func share(for keyID: [UInt8]) throws -> EncryptedShare? {
-      let hexID = hexString(keyID)
+      let hexID = keyID.hexString
       guard let data = try keychainData(account: hexID) else { return nil }
       return try EncryptedShare.decode(data, using: backend)
     }
@@ -135,7 +133,7 @@ import DiemSwiftCrypto
     }
 
     public func remove(keyID: [UInt8]) throws {
-      let hexID = hexString(keyID)
+      let hexID = keyID.hexString
       let query: [CFString: Any] = [
         kSecClass: kSecClassGenericPassword,
         kSecAttrService: configuration.service,
@@ -172,17 +170,15 @@ import DiemSwiftCrypto
         kSecAttrService: configuration.service,
         kSecAttrAccount: account,
         kSecValueData: Data(data),
+        kSecAttrAccessible: configuration.accessibility.cfValue,
+        kSecAttrSynchronizable: configuration.syncable,
+        kSecUseDataProtectionKeychain: true,
       ]
 
-      // Add accessibility if data protection is enabled
-      if configuration.useDataProtection {
-        query[kSecAttrAccessible] = configuration.accessibility.cfValue
-      } else {
-        query[kSecAttrAccessible] = kSecAttrAccessibleAlways
+      // Add access group if specified
+      if let accessGroup = configuration.accessGroup {
+        query[kSecAttrAccessGroup] = accessGroup
       }
-
-      // Add syncable attribute
-      query[kSecAttrSynchronizable] = configuration.syncable
 
       let status = SecItemAdd(query as CFDictionary, nil)
       guard status == errSecSuccess else { throw DiemError.encryptionFailed }
@@ -197,15 +193,6 @@ import DiemSwiftCrypto
       let attributes: [CFString: Any] = [kSecValueData: Data(data)]
       let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
       guard status == errSecSuccess else { throw DiemError.keyNotFound }
-    }
-
-    private func hexString(_ bytes: [UInt8]) -> String {
-      bytes.reduce(into: "") { result, byte in
-        let hi = (byte >> 4) & 0x0F
-        let lo = byte & 0x0F
-        result.append(Character(UnicodeScalar(hi < 10 ? 48 &+ hi : 87 &+ hi)))
-        result.append(Character(UnicodeScalar(lo < 10 ? 48 &+ lo : 87 &+ lo)))
-      }
     }
   }
 #endif

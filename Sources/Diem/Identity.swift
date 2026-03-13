@@ -183,11 +183,11 @@ extension Identity {
   /// - Returns: The decrypted CBOR payload.
   /// - Throws: ``DiemError/unsupportedCryptoSet(_:)``, ``DiemError/keyNotFound``,
   ///           ``DiemError/decryptionFailed``, ``DiemError/invalidCBOR``, or
-  ///           ``DiemError/messageIsForShare`` if the message is encrypted for a share.
+  ///           ``DiemError/unexpectedMessageRecipientType`` if the message is encrypted for a share.
   public func decrypt(_ message: EncryptedMessage) throws -> CBOR {
     // Only handle key-type messages
     guard case .key(let cryptoSet, let keyID, let encapsulatedKey) = message.recipient else {
-      throw DiemError.messageIsForShare
+      throw DiemError.unexpectedMessageRecipientType
     }
 
     guard backend.supportedCryptoSets.contains(cryptoSet) else {
