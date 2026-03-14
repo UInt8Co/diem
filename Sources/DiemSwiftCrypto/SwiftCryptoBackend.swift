@@ -262,12 +262,7 @@ extension SwiftCryptoBackend {
   }
 
   private func _aes256gcmEncrypt(plaintext: [UInt8], key: [UInt8]) throws -> [UInt8] {
-    let symKey: SymmetricKey
-    do {
-      symKey = SymmetricKey(data: key)
-    } catch {
-      throw DiemError.invalidKey
-    }
+    let symKey = SymmetricKey(data: key)
 
     // Generate a random 12-byte nonce (96 bits, standard for GCM)
     let nonce = AES.GCM.Nonce()
@@ -315,7 +310,8 @@ extension SwiftCryptoBackend {
 
     let sealedBox: AES.GCM.SealedBox
     do {
-      sealedBox = try AES.GCM.SealedBox(nonce: nonce, ciphertext: Data(ciphertextBytes), tag: Data(tagBytes))
+      sealedBox = try AES.GCM.SealedBox(
+        nonce: nonce, ciphertext: Data(ciphertextBytes), tag: Data(tagBytes))
     } catch {
       throw DiemError.decryptionFailed
     }

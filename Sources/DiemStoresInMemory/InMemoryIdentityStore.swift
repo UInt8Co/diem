@@ -35,7 +35,9 @@ public final class InMemoryIdentityStore<B: DiemCryptoBackend>: IdentityStore {
 
   public func update(_ identity: Identity<B>) throws {
     state.withLock { state in
-      if let existing = state.identities[identity.profile.id] { deindexKeys(of: existing, in: &state) }
+      if let existing = state.identities[identity.profile.id] {
+        deindexKeys(of: existing, in: &state)
+      }
       state.identities[identity.profile.id] = identity
       indexKeys(of: identity, in: &state)
     }
@@ -69,7 +71,7 @@ public final class InMemoryIdentityStore<B: DiemCryptoBackend>: IdentityStore {
   /// ``EncryptedShare/decrypt(_:using:)``.
   public func decrypt(_ message: EncryptedMessage) throws -> CBOR {
     // Only handle key-type messages
-    guard case .key(_, let keyID, _) = message.recipient else {
+    guard case .profileKey(_, let keyID, _) = message.recipient else {
       throw DiemError.unexpectedMessageRecipientType
     }
 

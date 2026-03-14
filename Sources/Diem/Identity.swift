@@ -136,13 +136,16 @@ extension Identity {
   /// ``CryptoSet/pqc`` over ``CryptoSet/classic``.
   ///
   /// - Throws: ``DiemError/keyNotFound`` if no common crypto set can be negotiated.
-  public func signAndEncrypt(_ payload: CBOR, to recipient: Profile) throws -> EncryptedSignedMessage {
+  public func signAndEncrypt(_ payload: CBOR, to recipient: Profile) throws
+    -> EncryptedSignedMessage
+  {
     let senderSets = Set(
       profile.keys.filter { $0.keyType == .signing }.map { $0.cryptoSet }
     ).intersection(
       profile.keys.filter { $0.keyType == .keyAgreement }.map { $0.cryptoSet }
     )
-    let recipientSets = Set(recipient.keys.filter { $0.keyType == .keyAgreement }.map { $0.cryptoSet })
+    let recipientSets = Set(
+      recipient.keys.filter { $0.keyType == .keyAgreement }.map { $0.cryptoSet })
     let cryptoSet = try CryptoSet.negotiate(between: senderSets, and: recipientSets)
     return try signAndEncrypt(payload, to: recipient, cryptoSet: cryptoSet)
   }
@@ -163,7 +166,8 @@ extension Identity {
     cryptoSet: CryptoSet
   ) throws -> EncryptedSignedMessage {
     let signed = try sign(payload, cryptoSet: cryptoSet)
-    return try EncryptedSignedMessage.encrypt(signed, to: recipient, cryptoSet: cryptoSet, using: backend)
+    return try EncryptedSignedMessage.encrypt(
+      signed, to: recipient, cryptoSet: cryptoSet, using: backend)
   }
 }
 
@@ -186,7 +190,7 @@ extension Identity {
   ///           ``DiemError/unexpectedMessageRecipientType`` if the message is encrypted for a share.
   public func decrypt(_ message: EncryptedMessage) throws -> CBOR {
     // Only handle key-type messages
-    guard case .key(let cryptoSet, let keyID, let encapsulatedKey) = message.recipient else {
+    guard case .profileKey(let cryptoSet, let keyID, let encapsulatedKey) = message.recipient else {
       throw DiemError.unexpectedMessageRecipientType
     }
 

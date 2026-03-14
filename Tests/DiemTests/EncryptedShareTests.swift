@@ -51,9 +51,13 @@ import Testing
     let share = EncryptedShare(using: backend)
     let invitation = try share.invite(aliceKA, using: backend)
 
-    #expect(invitation.cryptoSet == .classic)
-    #expect(invitation.recipientKeyID == aliceKA.id)
-    #expect(invitation.encapsulatedKey != nil)
+    if case .profileKey(let cryptoSet, let keyID, let encapsulatedKey) = invitation.recipient {
+      #expect(cryptoSet == .classic)
+      #expect(keyID == aliceKA.id)
+      #expect(encapsulatedKey.count > 0)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
   }
 
   @Test func inviteToProfileWithCryptoSet() throws {
@@ -61,7 +65,11 @@ import Testing
     let share = EncryptedShare(using: backend)
 
     let invitation = try share.invite(alice.profile, cryptoSet: .classic, using: backend)
-    #expect(invitation.cryptoSet == .classic)
+    if case .profileKey(let cryptoSet, _, _) = invitation.recipient {
+      #expect(cryptoSet == .classic)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
   }
 
   @Test func inviteToProfileAutoNegotiation() throws {
@@ -70,7 +78,11 @@ import Testing
 
     let invitation = try share.invite(alice.profile, using: backend)
     // Should prefer PQC when both support it
-    #expect(invitation.cryptoSet == .pqc)
+    if case .profileKey(let cryptoSet, _, _) = invitation.recipient {
+      #expect(cryptoSet == .pqc)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
   }
 
   @Test func inviteToProfileClassicOnly() throws {
@@ -78,7 +90,11 @@ import Testing
     let share = EncryptedShare(using: backend)
 
     let invitation = try share.invite(alice.profile, using: backend)
-    #expect(invitation.cryptoSet == .classic)
+    if case .profileKey(let cryptoSet, _, _) = invitation.recipient {
+      #expect(cryptoSet == .classic)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
   }
 
   @Test func fromInvite() throws {
@@ -229,7 +245,7 @@ import Testing
     #expect(try bob.decrypt(bobMessage) == bobPayload)
 
     // Verify message types are different
-    if case .profile = bobMessage.recipient {
+    if case .profileKey = bobMessage.recipient {
       // Profile message - correct
     } else {
       Issue.record("Expected profile recipient type for bobMessage")

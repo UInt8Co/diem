@@ -11,7 +11,7 @@ import Testing
     })!
     let payload: CBOR = .textString("hello, world")
     let msg = try EncryptedMessage.encrypt(payload, to: kaKey, using: backend)
-    if case .key(let cryptoSet, let keyID, _) = msg.recipient {
+    if case .profileKey(let cryptoSet, let keyID, _) = msg.recipient {
       #expect(cryptoSet == .classic)
       #expect(keyID == kaKey.id)
     } else {
@@ -28,7 +28,7 @@ import Testing
     })!
     let payload: CBOR = .textString("post-quantum hello")
     let msg = try EncryptedMessage.encrypt(payload, to: kaKey, using: backend)
-    if case .key(let cryptoSet, _, _) = msg.recipient {
+    if case .profileKey(let cryptoSet, _, _) = msg.recipient {
       #expect(cryptoSet == .pqc)
     } else {
       Issue.record("Expected profile recipient type")

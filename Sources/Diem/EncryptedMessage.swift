@@ -21,19 +21,19 @@ import CBOR
 /// Serialised as a CBOR map with integer keys (see ``toCBOR()``).
 public struct EncryptedMessage: Sendable {
   /// The recipient type for this encrypted message.
-  public enum RecipientType: Sendable, Equatable {
-    /// Encrypted for a specific key using HPKE.
-    case key(cryptoSet: CryptoSet, keyID: [UInt8], encapsulatedKey: [UInt8])
-    /// Encrypted for an ``EncryptedShare`` using symmetric encryption.
+  public enum Recipient: Sendable, Equatable {
+    /// Encrypted for a specific ``Profile`` key.
+    case profileKey(cryptoSet: CryptoSet, keyID: [UInt8], encapsulatedKey: [UInt8])
+    /// Encrypted for an ``EncryptedShare``.
     case share(crypto: EncryptedShare.Crypto, keyID: [UInt8])
   }
 
   /// The recipient type and associated metadata.
-  public let recipient: RecipientType
+  public let recipient: Recipient
   /// The HPKE or symmetric ciphertext (authenticated ciphertext including AEAD tag).
   public let ciphertext: [UInt8]
 
-  public init(recipient: RecipientType, ciphertext: [UInt8]) {
+  public init(recipient: Recipient, ciphertext: [UInt8]) {
     self.recipient = recipient
     self.ciphertext = ciphertext
   }
@@ -64,7 +64,7 @@ extension EncryptedMessage {
       recipientPublicKey: recipientPublicKey.rawBytes,
       cryptoSet: recipientPublicKey.cryptoSet)
     return EncryptedMessage(
-      recipient: .key(
+      recipient: .profileKey(
         cryptoSet: recipientPublicKey.cryptoSet,
         keyID: recipientPublicKey.id,
         encapsulatedKey: encapsulatedKey),
@@ -101,8 +101,10 @@ extension EncryptedMessage {
     to recipient: Profile,
     using backend: Backend
   ) throws -> EncryptedMessage {
-    let recipientSets = Set(recipient.keys.filter { $0.keyType == .keyAgreement }.map { $0.cryptoSet })
-    let cryptoSet = try CryptoSet.negotiate(between: backend.supportedCryptoSets, and: recipientSets)
+    let recipientSets = Set(
+      recipient.keys.filter { $0.keyType == .keyAgreement }.map { $0.cryptoSet })
+    let cryptoSet = try CryptoSet.negotiate(
+      between: backend.supportedCryptoSets, and: recipientSets)
     return try encrypt(payload, to: recipient, cryptoSet: cryptoSet, using: backend)
   }
 }
@@ -138,51 +140,54 @@ extension EncryptedMessage {
     case ciphertext = 1
   }
 
-  private enum RecipientTypeTag: UInt64 {
-    case key = 0
+  private enum RecipientType: UInt64 {
+    case profileKey = 0
     case share = 1
   }
 
-  private enum KeyField: UInt64 {
+  private enum ProfileKeyRecipientField: UInt64 {
     case cryptoSet = 0
-    case keyID = 1
+    case recipientKeyID = 1
     case encapsulatedKey = 2
   }
 
-  private enum ShareField: UInt64 {
+  private enum ShareRecipientField: UInt64 {
     case crypto = 0
-    case keyID = 1
+    case shareKeyID = 1
   }
 
   /// Encodes this message as a CBOR map with integer keys.
   public func toCBOR() -> CBOR {
     let recipientCBOR: CBOR
+
     switch recipient {
-    case .key(let cryptoSet, let keyID, let encapsulatedKey):
-      recipientCBOR = .tagged(
-        RecipientTypeTag.key.rawValue,
+    case .profileKey(let cryptoSet, let recipientKeyID, let encapsulatedKey):
+      recipientCBOR = .array([
+        .unsignedInt(RecipientType.profileKey.rawValue),
         .map([
           CBORMapPair(
-            key: .unsignedInt(KeyField.cryptoSet.rawValue),
+            key: .unsignedInt(ProfileKeyRecipientField.cryptoSet.rawValue),
             value: .unsignedInt(cryptoSet.rawValue)),
           CBORMapPair(
-            key: .unsignedInt(KeyField.keyID.rawValue),
-            value: .byteString(ArraySlice(keyID))),
+            key: .unsignedInt(ProfileKeyRecipientField.recipientKeyID.rawValue),
+            value: .byteString(ArraySlice(recipientKeyID))),
           CBORMapPair(
-            key: .unsignedInt(KeyField.encapsulatedKey.rawValue),
+            key: .unsignedInt(ProfileKeyRecipientField.encapsulatedKey.rawValue),
             value: .byteString(ArraySlice(encapsulatedKey))),
-        ]))
-    case .share(let crypto, let keyID):
-      recipientCBOR = .tagged(
-        RecipientTypeTag.share.rawValue,
+        ]),
+      ])
+    case .share(let crypto, let shareKeyID):
+      recipientCBOR = .array([
+        .unsignedInt(RecipientType.share.rawValue),
         .map([
           CBORMapPair(
-            key: .unsignedInt(ShareField.crypto.rawValue),
+            key: .unsignedInt(ShareRecipientField.crypto.rawValue),
             value: .unsignedInt(crypto.rawValue)),
           CBORMapPair(
-            key: .unsignedInt(ShareField.keyID.rawValue),
-            value: .byteString(ArraySlice(keyID))),
-        ]))
+            key: .unsignedInt(ShareRecipientField.shareKeyID.rawValue),
+            value: .byteString(ArraySlice(shareKeyID))),
+        ]),
+      ])
     }
 
     return .map([
@@ -199,6 +204,7 @@ extension EncryptedMessage {
   public static func fromCBOR(_ cbor: CBOR) throws -> EncryptedMessage {
     guard let pairs = try cbor.mapValue() else { throw DiemError.invalidCBOR }
     var recipientCBOR: CBOR?
+
     var ciphertext: [UInt8]?
 
     for pair in pairs {
@@ -214,74 +220,78 @@ extension EncryptedMessage {
     }
 
     guard let recipientCBOR, let ciphertext else {
-      throw DiemError.missingField("EncryptedMessage: recipient or ciphertext missing")
+      throw DiemError.missingField("EncryptedMessage: recipientType or ciphertext missing")
     }
 
-    // Decode recipient type from tagged CBOR
-    guard case .tagged(let tagRaw, let taggedValue) = recipientCBOR else {
+    // Decode recipient type
+    guard
+      let typeArray = try recipientCBOR.arrayValue(),
+      typeArray.count == 2,
+      case .unsignedInt(let tagRaw) = typeArray[0]
+    else {
       throw DiemError.invalidCBOR
     }
 
-    let recipient: RecipientType
+    let recipient: Recipient
     switch tagRaw {
-    case RecipientTypeTag.key.rawValue:
-      guard let keyMap = try taggedValue.mapValue() else {
+    case RecipientType.profileKey.rawValue:
+      guard let profileMap = try typeArray[1].mapValue() else {
         throw DiemError.invalidCBOR
       }
       var cryptoSetRaw: UInt64?
-      var keyID: [UInt8]?
+      var recipientKeyID: [UInt8]?
       var encapsulatedKey: [UInt8]?
 
-      for pair in keyMap {
+      for pair in profileMap {
         guard case .unsignedInt(let k) = pair.key else { continue }
         switch k {
-        case KeyField.cryptoSet.rawValue:
+        case ProfileKeyRecipientField.cryptoSet.rawValue:
           if case .unsignedInt(let v) = pair.value { cryptoSetRaw = v }
-        case KeyField.keyID.rawValue:
-          keyID = pair.value.byteStringValue()
-        case KeyField.encapsulatedKey.rawValue:
+        case ProfileKeyRecipientField.recipientKeyID.rawValue:
+          recipientKeyID = pair.value.byteStringValue()
+        case ProfileKeyRecipientField.encapsulatedKey.rawValue:
           encapsulatedKey = pair.value.byteStringValue()
         default:
           break
         }
       }
 
-      guard let cryptoSetRaw, let keyID, let encapsulatedKey else {
+      guard let cryptoSetRaw, let recipientKeyID, let encapsulatedKey else {
         throw DiemError.missingField(
-          "EncryptedMessage.key: cryptoSet, keyID, or encapsulatedKey missing")
+          "EncryptedMessage.profile: cryptoSet, recipientKeyID, or encapsulatedKey missing")
       }
       guard let cryptoSet = CryptoSet(rawValue: cryptoSetRaw) else {
         throw DiemError.invalidCBOR
       }
-      recipient = .key(
-        cryptoSet: cryptoSet, keyID: keyID, encapsulatedKey: encapsulatedKey)
+      recipient = .profileKey(
+        cryptoSet: cryptoSet, keyID: recipientKeyID, encapsulatedKey: encapsulatedKey)
 
-    case RecipientTypeTag.share.rawValue:
-      guard let shareMap = try taggedValue.mapValue() else {
+    case RecipientType.share.rawValue:
+      guard let shareMap = try typeArray[1].mapValue() else {
         throw DiemError.invalidCBOR
       }
       var cryptoRaw: UInt64?
-      var keyID: [UInt8]?
+      var shareKeyID: [UInt8]?
 
       for pair in shareMap {
         guard case .unsignedInt(let k) = pair.key else { continue }
         switch k {
-        case ShareField.crypto.rawValue:
+        case ShareRecipientField.crypto.rawValue:
           if case .unsignedInt(let v) = pair.value { cryptoRaw = v }
-        case ShareField.keyID.rawValue:
-          keyID = pair.value.byteStringValue()
+        case ShareRecipientField.shareKeyID.rawValue:
+          shareKeyID = pair.value.byteStringValue()
         default:
           break
         }
       }
 
-      guard let cryptoRaw, let keyID else {
-        throw DiemError.missingField("EncryptedMessage.share: crypto or keyID missing")
+      guard let cryptoRaw, let shareKeyID else {
+        throw DiemError.missingField("EncryptedMessage.share: crypto or shareKeyID missing")
       }
       guard let crypto = EncryptedShare.Crypto(rawValue: cryptoRaw) else {
         throw DiemError.invalidCBOR
       }
-      recipient = .share(crypto: crypto, keyID: keyID)
+      recipient = .share(crypto: crypto, keyID: shareKeyID)
 
     default:
       throw DiemError.invalidCBOR

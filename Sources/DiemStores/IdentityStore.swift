@@ -63,15 +63,14 @@ extension IdentityStore {
   /// - Throws: ``/Diem/DiemError/keyNotFound`` if no identity owns the recipient key.
   public func decrypt(_ message: EncryptedMessage) throws -> CBOR {
     // Only handle Profile-type messages
-    guard case .profile(let cryptoSet, let recipientKeyID, _) = message.recipientType else {
+    guard case .profileKey(let cryptoSet, let keyID, _) = message.recipient else {
       throw DiemError.keyNotFound
     }
 
     let identities = try allIdentities()
     for identity in identities {
       if identity.profile.keys.contains(where: {
-        $0.id == recipientKeyID && $0.keyType == .keyAgreement
-          && $0.cryptoSet == cryptoSet
+        $0.id == keyID && $0.keyType == .keyAgreement && $0.cryptoSet == cryptoSet
       }) {
         return try identity.decrypt(message)
       }

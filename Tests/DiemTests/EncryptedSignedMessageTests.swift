@@ -11,8 +11,13 @@ import Testing
     let bob = try Identity(name: "Bob", cryptoSets: [.classic], using: backend)
     let payload: CBOR = .textString("hello, Bob")
     let signed = try alice.sign(payload, cryptoSet: .classic)
-    let msg = try EncryptedSignedMessage.encrypt(signed, to: bob.profile, cryptoSet: .classic, using: backend)
-    #expect(msg.message.cryptoSet == .classic)
+    let msg = try EncryptedSignedMessage.encrypt(
+      signed, to: bob.profile, cryptoSet: .classic, using: backend)
+    if case .profileKey(let cryptoSet, _, _) = msg.message.recipient {
+      #expect(cryptoSet == .classic)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
     let result = try msg.decryptAndVerify(using: bob, senderProfile: alice.profile)
     #expect(result.payload == payload)
     #expect(result.cryptoSet == .classic)
@@ -23,8 +28,13 @@ import Testing
     let bob = try Identity(name: "Bob", cryptoSets: [.pqc], using: backend)
     let payload: CBOR = .textString("pqc hello, Bob")
     let signed = try alice.sign(payload, cryptoSet: .pqc)
-    let msg = try EncryptedSignedMessage.encrypt(signed, to: bob.profile, cryptoSet: .pqc, using: backend)
-    #expect(msg.message.cryptoSet == .pqc)
+    let msg = try EncryptedSignedMessage.encrypt(
+      signed, to: bob.profile, cryptoSet: .pqc, using: backend)
+    if case .profileKey(let cryptoSet, _, _) = msg.message.recipient {
+      #expect(cryptoSet == .pqc)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
     let result = try msg.decryptAndVerify(using: bob, senderProfile: alice.profile)
     #expect(result.payload == payload)
   }
@@ -32,7 +42,9 @@ import Testing
   @Test func encryptToSpecificKey() throws {
     let alice = try Identity(name: "Alice", cryptoSets: [.classic], using: backend)
     let bob = try Identity(name: "Bob", cryptoSets: [.classic], using: backend)
-    let bobKA = bob.profile.keys.first(where: { $0.keyType == .keyAgreement && $0.cryptoSet == .classic })!
+    let bobKA = bob.profile.keys.first(where: {
+      $0.keyType == .keyAgreement && $0.cryptoSet == .classic
+    })!
     let signed = try alice.sign(.unsignedInt(1), cryptoSet: .classic)
     let msg = try EncryptedSignedMessage.encrypt(signed, to: bobKA, using: backend)
     let result = try msg.decryptAndVerify(using: bob, senderProfile: alice.profile)
@@ -53,7 +65,9 @@ import Testing
   @Test func decryptAndVerifyPayloadViaSigningKey() throws {
     let alice = try Identity(name: "Alice", cryptoSets: [.classic], using: backend)
     let bob = try Identity(name: "Bob", cryptoSets: [.classic], using: backend)
-    let aliceSigKey = alice.profile.keys.first(where: { $0.keyType == .signing && $0.cryptoSet == .classic })!
+    let aliceSigKey = alice.profile.keys.first(where: {
+      $0.keyType == .signing && $0.cryptoSet == .classic
+    })!
     let payload: CBOR = .unsignedInt(99)
     let msg = try alice.signAndEncrypt(payload, to: bob.profile)
     let extracted = try msg.decryptAndVerifyPayload(using: bob, against: aliceSigKey)
@@ -68,7 +82,11 @@ import Testing
     let payload: CBOR = .textString("sign and encrypt")
     let msg = try alice.signAndEncrypt(payload, to: bob.profile)
     // Both have all keys; negotiation should pick PQC (higher priority).
-    #expect(msg.message.cryptoSet == .pqc)
+    if case .profileKey(let cryptoSet, _, _) = msg.message.recipient {
+      #expect(cryptoSet == .pqc)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
     let result = try msg.decryptAndVerify(using: bob, senderProfile: alice.profile)
     #expect(result.payload == payload)
     #expect(result.cryptoSet == .pqc)
@@ -89,7 +107,9 @@ import Testing
   @Test func decryptAndVerifyAgainstSpecificKey() throws {
     let alice = try Identity(name: "Alice", cryptoSets: [.classic], using: backend)
     let bob = try Identity(name: "Bob", cryptoSets: [.classic], using: backend)
-    let aliceSigKey = alice.profile.keys.first(where: { $0.keyType == .signing && $0.cryptoSet == .classic })!
+    let aliceSigKey = alice.profile.keys.first(where: {
+      $0.keyType == .signing && $0.cryptoSet == .classic
+    })!
     let msg = try alice.signAndEncrypt(.textString("hi Bob"), to: bob.profile)
     let result = try msg.decryptAndVerify(using: bob, against: aliceSigKey)
     #expect(result.payload == .textString("hi Bob"))
@@ -134,7 +154,9 @@ import Testing
     let alice = try Identity(name: "Alice", cryptoSets: [.classic], using: backend)
     let bob = try Identity(name: "Bob", cryptoSets: [.classic], using: backend)
     let carol = try Identity(name: "Carol", cryptoSets: [.classic], using: backend)
-    let carolSigKey = carol.profile.keys.first(where: { $0.keyType == .signing && $0.cryptoSet == .classic })!
+    let carolSigKey = carol.profile.keys.first(where: {
+      $0.keyType == .signing && $0.cryptoSet == .classic
+    })!
     let msg = try alice.signAndEncrypt(.textString("from Alice"), to: bob.profile)
     #expect(throws: DiemError.verificationFailed) {
       _ = try msg.decryptAndVerify(using: bob, against: carolSigKey)
@@ -147,7 +169,11 @@ import Testing
     let alice = try Identity(name: "Alice", using: backend)
     let bob = try Identity(name: "Bob", using: backend)
     let msg = try alice.signAndEncrypt(.textString("negotiated"), to: bob.profile)
-    #expect(msg.message.cryptoSet == .pqc)
+    if case .profileKey(let cryptoSet, _, _) = msg.message.recipient {
+      #expect(cryptoSet == .pqc)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
     let result = try msg.decryptAndVerify(using: bob, senderProfile: alice.profile)
     #expect(result.cryptoSet == .pqc)
   }
@@ -156,7 +182,11 @@ import Testing
     let alice = try Identity(name: "Alice", using: backend)
     let bob = try Identity(name: "Bob", cryptoSets: [.classic], using: backend)
     let msg = try alice.signAndEncrypt(.textString("classic fallback"), to: bob.profile)
-    #expect(msg.message.cryptoSet == .classic)
+    if case .profileKey(let cryptoSet, _, _) = msg.message.recipient {
+      #expect(cryptoSet == .classic)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
     let result = try msg.decryptAndVerify(using: bob, senderProfile: alice.profile)
     #expect(result.cryptoSet == .classic)
   }
@@ -165,7 +195,11 @@ import Testing
     let alice = try Identity(name: "Alice", cryptoSets: [.classic], using: backend)
     let bob = try Identity(name: "Bob", using: backend)
     let msg = try alice.signAndEncrypt(.textString("classic fallback"), to: bob.profile)
-    #expect(msg.message.cryptoSet == .classic)
+    if case .profileKey(let cryptoSet, _, _) = msg.message.recipient {
+      #expect(cryptoSet == .classic)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
     let result = try msg.decryptAndVerify(using: bob, senderProfile: alice.profile)
     #expect(result.cryptoSet == .classic)
   }
@@ -184,7 +218,11 @@ import Testing
     let alice = try Identity(name: "Alice", using: backend)
     let payload: CBOR = .textString("encrypted negotiate")
     let msg = try EncryptedMessage.encrypt(payload, to: alice.profile, using: backend)
-    #expect(msg.cryptoSet == .pqc)
+    if case .profileKey(let cryptoSet, _, _) = msg.recipient {
+      #expect(cryptoSet == .pqc)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
     let decrypted = try alice.decrypt(msg)
     #expect(decrypted == payload)
   }
@@ -194,7 +232,11 @@ import Testing
     let bob = try Identity(name: "Bob", using: backend)
     let signed = try alice.sign(.textString("static negotiate"), cryptoSet: .classic)
     let msg = try EncryptedSignedMessage.encrypt(signed, to: bob.profile, using: backend)
-    #expect(msg.message.cryptoSet == .pqc)
+    if case .profileKey(let cryptoSet, _, _) = msg.message.recipient {
+      #expect(cryptoSet == .pqc)
+    } else {
+      Issue.record("Expected profileKey recipient type")
+    }
     let result = try msg.decryptAndVerify(using: bob, senderProfile: alice.profile)
     #expect(result.payload == .textString("static negotiate"))
   }

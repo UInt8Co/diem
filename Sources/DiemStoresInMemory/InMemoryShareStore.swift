@@ -39,7 +39,7 @@ public final class InMemoryShareStore: ShareStore {
   }
 
   public func remove(keyID: [UInt8]) throws {
-    shares.withLock { shares in
+    _ = shares.withLock { shares in
       shares.removeValue(forKey: keyID)
     }
   }
