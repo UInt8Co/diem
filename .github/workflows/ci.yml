@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  crypto-linux:
+    name: Portable cryptography
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.4.0"
+      - name: Test portable contracts
+        run: swift test -j 4
+
+  # ── Test suite + embedded build (macOS 26 for PQC crypto APIs) ───────────
+  test:
+    name: Run Tests
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Swift toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/swiftly
+          key: swiftly-${{ runner.os }}-${{ hashFiles('.swift-version') }}
+
+      - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.4.0"
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Run tests
+        run: swiftly run swift test
+
+      - name: Build portable Embedded verifier
+        run: bash Scripts/build-embedded.sh
+
+  # ── Build and deploy documentation (main branch only) ────────────────────
+  docs:
+    name: Build and Deploy Docs
+    runs-on: macos-26
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Swift toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/swiftly
+          key: swiftly-${{ runner.os }}-${{ hashFiles('.swift-version') }}
+
+      - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.4.0"
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build documentation
+        run: bash Scripts/build-docs.sh
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          wranglerVersion: "4.72.0"
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
