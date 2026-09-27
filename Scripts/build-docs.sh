@@ -6,13 +6,8 @@
 set -euo pipefail
 
 TARGETS=(
-  DiemPortable
   Diem
-  DiemMocks
   DiemSwiftCrypto
-  DiemStores
-  DiemStoresInMemory
-  DiemStoresKeychain
 )
 
 rm -rf ./dist

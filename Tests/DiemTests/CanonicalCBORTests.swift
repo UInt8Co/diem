@@ -1,52 +1,63 @@
-import DiemPortable
+import Diem
 import Testing
 
 @Suite struct CanonicalCBORTests {
   @Test func integerAndContainerBoundaries() throws {
     let values: [CBOR] = [
-      .unsignedInt(0), .unsignedInt(23), .unsignedInt(24), .unsignedInt(255),
-      .unsignedInt(256), .unsignedInt(65535), .unsignedInt(65536),
-      .unsignedInt(4_294_967_295), .unsignedInt(4_294_967_296), .unsignedInt(.max),
-      .negativeInt(-1), .negativeInt(-24), .negativeInt(.min),
-      .byteString([]), .textString("😀 ß"), .array([]), .map([]), .bool(false), .bool(true), .null,
+      .unsigned(0), .unsigned(23), .unsigned(24), .unsigned(255), .unsigned(256),
+      .unsigned(65535), .unsigned(65536), .unsigned(4_294_967_295), .unsigned(4_294_967_296),
+      .unsigned(.max), .negative(-1), .negative(-24), .negative(.min),
+      .bytes([]), .text("😀 ß"), .array([]), .map([:]), .bool(false), .bool(true), .null,
     ]
     for value in values {
-      #expect(try CanonicalCBOR.decode(value.encode()) == value)
-      #expect(throws: DiemError.invalidCBOR) { try CanonicalCBOR.decode(value.encode() + [0]) }
+      #expect(try CBOR(decoding: value.encoded) == value)
+      #expect(throws: DiemError.invalidEncoding) { try CBOR(decoding: value.encoded + [0]) }
     }
     for count in [23, 24, 255, 256, 65535, 65536] {
-      let value = CBOR.byteString(ArraySlice(repeating: 7, count: count))
-      #expect(try CanonicalCBOR.decode(value.encode()) == value)
+      let value = CBOR.bytes([UInt8](repeating: 7, count: count))
+      #expect(try CBOR(decoding: value.encoded) == value)
     }
   }
-  @Test func mapOrderingAndDuplicateRejection() throws {
-    let map = CBOR.map([
-      .init(key: .textString("aa"), value: .unsignedInt(1)),
-      .init(key: .unsignedInt(0), value: .unsignedInt(2)),
-      .init(key: .textString("b"), value: .unsignedInt(3)),
-    ])
-    #expect(
-      try CanonicalCBOR.decode(map.encode()).encode() == [
-        0xa3, 0, 2, 0x61, 0x62, 3, 0x62, 0x61, 0x61, 1,
-      ])
-    let duplicate = CBOR.map([
-      .init(key: .unsignedInt(0), value: .null), .init(key: .unsignedInt(0), value: .null),
-    ])
-    #expect(throws: DiemError.invalidCBOR) { try CanonicalCBOR.encode(duplicate) }
+
+  @Test func mapsEncodeInCanonicalKeyOrder() throws {
+    let map = CBOR.map([.text("aa"): .unsigned(1), .unsigned(0): .unsigned(2), .text("b"): .unsigned(3)])
+    #expect(map.encoded == [0xa3, 0, 2, 0x61, 0x62, 3, 0x62, 0x61, 0x61, 1])
+    #expect(try CBOR(decoding: map.encoded) == map)
+    // Out-of-order and duplicate keys.
+    #expect(throws: DiemError.invalidEncoding) { try CBOR(decoding: [0xa2, 1, 0, 0, 0]) }
+    #expect(throws: DiemError.invalidEncoding) { try CBOR(decoding: [0xa2, 0, 0, 0, 0]) }
   }
-  @Test func deterministicMalformedInputCorpusIsBounded() throws {
+
+  @Test func rejectsNonCanonicalAndUnsupportedEncodings() {
+    for malformed: [UInt8] in [
+      [0x18, 0x00],  // non-minimal integer
+      [0x9f, 0xff],  // indefinite array
+      [0xf9, 0, 0],  // float
+      [0xc0, 0],  // tag
+      [0x62, 0xc3, 0x28],  // invalid UTF-8
+      [0x3b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],  // below Int64.min
+    ] {
+      #expect(throws: DiemError.invalidEncoding) { try CBOR(decoding: malformed) }
+    }
+    let deep = [UInt8](repeating: 0x81, count: CBOR.maximumDepth + 1) + [0]
+    #expect(throws: DiemError.invalidEncoding) { try CBOR(decoding: deep) }
+  }
+
+  @Test func deterministicMalformedInputCorpusIsBounded() {
     var state: UInt64 = 0x656e_6572_6174_6f72
     for count in 0..<10_000 {
       let bytes: [UInt8] = (0..<(count % 64)).map { _ in
         state = state &* 6_364_136_223_846_793_005 &+ 1
         return UInt8(truncatingIfNeeded: state >> 32)
       }
-      if let value = try? CanonicalCBOR.decode(bytes) {
-        #expect(value.encode() == bytes)
-      }
+      if let value = try? CBOR(decoding: bytes) { #expect(value.encoded == bytes) }
     }
-    #expect(throws: DiemError.invalidCBOR) {
-      try CanonicalCBOR.decode([0x3b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
-    }
+  }
+
+  @Test func typedAccessorsRejectOtherShapes() throws {
+    #expect(try CBOR.bytes([1, 2]).bytesValue(count: 2) == [1, 2])
+    #expect(throws: DiemError.invalidEncoding) { try CBOR.bytes([1]).bytesValue(count: 2) }
+    #expect(throws: DiemError.invalidEncoding) { try CBOR.text("1").unsignedValue() }
+    #expect(throws: DiemError.invalidEncoding) { try CBOR.array([]).arrayValue(count: 1) }
   }
 }

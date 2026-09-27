@@ -4,64 +4,56 @@
   import Foundation
   import Security
 
-  /// The stored blobs are Secure Enclave references bound to their original device,
-  /// not exported private keys. Restore them only on that same device.
-  public struct SecureEnclaveSigningKey: DeviceSigningKey {
-    private let key: SecureEnclave.P256.Signing.PrivateKey
-    public let publicKey: DevicePublicKey
-    public let protection = KeyProtection.secureEnclave
-    public var persistentReference: Data { key.dataRepresentation }
-
-    public init(accessControl: SecAccessControl) throws {
-      guard SecureEnclave.isAvailable else { throw DiemError.keyNotFound }
+  extension PrivateKey {
+    /// A new P-256 signing key generated inside the Secure Enclave, and the opaque
+    /// reference that restores it on this device.
+    public static func secureEnclave(accessControl: SecAccessControl) throws
+      -> (key: PrivateKey, reference: Data)
+    {
+      guard SecureEnclave.isAvailable else { throw DiemError.unsupportedAlgorithm }
       let key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: accessControl)
-      self.key = key
-      self.publicKey = try DevicePublicKey(
-        algorithm: .p256Signing,
-        rawRepresentation: Array(key.publicKey.x963Representation))
+      return (try PrivateKey(key), key.dataRepresentation)
     }
-    public init(persistentReference: Data) throws {
-      let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: persistentReference)
-      self.key = key
-      self.publicKey = try DevicePublicKey(
-        algorithm: .p256Signing,
-        rawRepresentation: Array(key.publicKey.x963Representation))
+
+    /// The Secure Enclave signing key that `reference` names on this device.
+    public init(secureEnclaveReference reference: Data) throws {
+      try self.init(SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: reference))
     }
-    public func signature(for message: [UInt8]) throws(DiemError) -> [UInt8] {
-      try normalizeCryptoFailure(.encryptionFailed) {
-        try Array(key.signature(for: message).rawRepresentation)
-      }
+
+    private init(_ key: SecureEnclave.P256.Signing.PrivateKey) throws {
+      try self.init(
+        publicKey: PublicKey(algorithm: .p256, rawRepresentation: Array(key.publicKey.x963Representation)),
+        protection: .hardware, rawRepresentation: nil
+      ) { try Array(key.signature(for: $0).rawRepresentation) }
     }
   }
 
-  public struct SecureEnclaveWrappingKey: DeviceWrappingKey {
-    private let key: SecureEnclave.P256.KeyAgreement.PrivateKey
-    public let publicKey: DevicePublicKey
-    public let protection = KeyProtection.secureEnclave
-    public var persistentReference: Data { key.dataRepresentation }
-
-    public init(accessControl: SecAccessControl) throws {
-      guard SecureEnclave.isAvailable else { throw DiemError.keyNotFound }
+  extension EncryptionPrivateKey {
+    /// A new P-256 encryption key generated inside the Secure Enclave, and the opaque
+    /// reference that restores it on this device.
+    public static func secureEnclave(accessControl: SecAccessControl) throws
+      -> (key: EncryptionPrivateKey, reference: Data)
+    {
+      guard SecureEnclave.isAvailable else { throw DiemError.unsupportedAlgorithm }
       let key = try SecureEnclave.P256.KeyAgreement.PrivateKey(accessControl: accessControl)
-      self.key = key
-      self.publicKey = try DevicePublicKey(
-        algorithm: .p256Agreement,
-        rawRepresentation: Array(key.publicKey.x963Representation))
+      return (try EncryptionPrivateKey(key), key.dataRepresentation)
     }
-    public init(persistentReference: Data) throws {
-      let key = try SecureEnclave.P256.KeyAgreement.PrivateKey(
-        dataRepresentation: persistentReference)
-      self.key = key
-      self.publicKey = try DevicePublicKey(
-        algorithm: .p256Agreement,
-        rawRepresentation: Array(key.publicKey.x963Representation))
+
+    /// The Secure Enclave encryption key that `reference` names on this device.
+    public init(secureEnclaveReference reference: Data) throws {
+      try self.init(SecureEnclave.P256.KeyAgreement.PrivateKey(dataRepresentation: reference))
     }
-    public func open(_ box: WrappedSecret, context: [UInt8]) throws(DiemError) -> [UInt8] {
-      try normalizeCryptoFailure(.decryptionFailed) {
-        var recipient = try HPKE.Recipient(
-          privateKey: key, ciphersuite: .P256_SHA256_AES_GCM_256,
-          info: Data(context), encapsulatedKey: Data(box.encapsulatedKey))
-        return try Array(recipient.open(box.ciphertext, authenticating: context))
+
+    private init(_ key: SecureEnclave.P256.KeyAgreement.PrivateKey) throws {
+      try self.init(
+        publicKey: EncryptionPublicKey(algorithm: .p256, rawRepresentation: Array(key.publicKey.x963Representation)),
+        protection: .hardware, rawRepresentation: nil
+      ) { box, context in
+        try HPKEOpen.open(box, context: context) {
+          try HPKE.Recipient(
+            privateKey: key, ciphersuite: .P256_SHA256_AES_GCM_256, info: Data(context),
+            encapsulatedKey: Data(box.encapsulatedKey))
+        }
       }
     }
   }

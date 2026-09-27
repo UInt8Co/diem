@@ -1,0 +1,160 @@
+import Diem
+import Foundation
+import Testing
+
+@Suite struct IdentityTests {
+  let backend = TestBackend()
+
+  @Test func newIdentityPublishesAVerifiableProfileAndProofs() async throws {
+    let identity = try await Identity(data: [1, 2, 3], using: backend)
+    let profile = try Profile(encoding: identity.profile.encoding)
+    #expect(profile == identity.profile)
+    #expect(profile.data == [1, 2, 3] && profile.revision == 1 && profile.generation == 1)
+    #expect(profile.previousDigest == nil && profile.id == identity.identityKey?.publicKey.id)
+    try await profile.verify(using: backend)
+
+    let proof = try Proof(encoding: try await identity.prove([7]).encoding)
+    #expect(proof.data == [7] && proof.deviceID == identity.deviceKey.publicKey.id)
+    try await proof.verify(against: profile, using: backend)
+
+    let stranger = try await Identity(data: [], using: backend)
+    await #expect(throws: DiemError.identityMismatch) {
+      try await proof.verify(against: stranger.profile, using: backend)
+    }
+  }
+
+  @Test func updatesChainRevisions() async throws {
+    var identity = try await Identity(data: [1], using: backend)
+    let first = identity.profile
+    let second = try await identity.update(data: [2])
+    #expect(second.revision == 2 && second.previousDigest == first.digest && second.data == [2])
+    try await second.verify(using: backend)
+  }
+
+  @Test func addedDeviceSignsProfilesAndProofsWithoutTheIdentityKey() async throws {
+    var owner = try await Identity(data: [1], using: backend)
+    let laptopKey = try await DevicePrivateKey.generate(.p256, using: backend)
+    let added = try await owner.add(laptopKey.publicKey)
+    #expect(added.devices.count == 2 && added.generation == 1)
+
+    var laptop = try await Identity(profile: added, deviceKey: laptopKey, using: backend)
+    #expect(laptop.identityKey == nil)
+    let updated = try await laptop.update(data: [9])
+    #expect(updated.signer == laptopKey.publicKey)
+    try await updated.verify(using: backend)
+    try await laptop.prove([4]).verify(against: updated, using: backend)
+    await #expect(throws: DiemError.identityKeyRequired) {
+      try await laptop.add(try await DevicePrivateKey.generate(using: backend).publicKey)
+    }
+  }
+
+  @Test func removingADeviceStartsANewGeneration() async throws {
+    var owner = try await Identity(data: [1], using: backend)
+    let lostKey = try await DevicePrivateKey.generate(using: backend)
+    let withLost = try await owner.add(lostKey.publicKey)
+    let lost = try await Identity(profile: withLost, deviceKey: lostKey, using: backend)
+    let staleProof = try await lost.prove([1])
+
+    let without = try await owner.remove(lostKey.publicKey.id)
+    #expect(without.generation == 2 && without.devices.count == 1)
+    await #expect(throws: DiemError.deviceNotListed) {
+      try await staleProof.verify(against: without, using: backend)
+    }
+    await #expect(throws: DiemError.deviceNotListed) {
+      try await Identity(profile: without, deviceKey: lostKey, using: backend)
+    }
+    await #expect(throws: DiemError.identityMismatch) {
+      try await owner.remove(owner.deviceKey.publicKey.id)
+    }
+  }
+
+  @Test func profilesAndCertificatesExpire() async throws {
+    var owner = try await Identity(data: [1], using: backend)
+    let otherKey = try await DevicePrivateKey.generate(using: backend)
+    var other = try await Identity(
+      profile: try await owner.add(otherKey.publicKey), deviceKey: otherKey, using: backend)
+
+    backend.advance(by: Profile.maximumLifetime)
+    await #expect(throws: DiemError.expired) { try await owner.profile.verify(using: backend) }
+    try await other.renew().verify(using: backend)
+
+    backend.advance(by: DeviceCertificate.maximumLifetime)
+    await #expect(throws: DiemError.expired) { try await other.update(data: [2]) }
+    // The identity key reissues expired certificates on update.
+    let renewed = try await owner.update(data: [3])
+    try await renewed.verify(using: backend)
+    #expect(renewed.devices.count == 2)
+  }
+
+  @Test func decodingRejectsMixedIdentitiesAndGenerations() async throws {
+    let alice = try await Identity(data: [], using: backend)
+    let bob = try await Identity(data: [], using: backend)
+    func mixed(key: Profile, devices: Profile, content: Profile) -> [UInt8] {
+      CBOR.array([
+        .text("Diem/profile"), .unsigned(3), .bytes(key.identityKey.key.encoding),
+        .array(devices.devices.map { .bytes($0.encoding) }), .bytes(content.content.encoding),
+      ]).encoded
+    }
+    #expect(throws: DiemError.identityMismatch) {
+      try Profile(encoding: mixed(key: alice.profile, devices: bob.profile, content: alice.profile))
+    }
+    #expect(throws: DiemError.identityMismatch) {
+      try Profile(encoding: mixed(key: alice.profile, devices: alice.profile, content: bob.profile))
+    }
+    var owner = alice
+    let removedKey = try await DevicePrivateKey.generate(using: backend)
+    let first = try await owner.add(removedKey.publicKey)
+    let second = try await owner.remove(removedKey.publicKey.id)
+    #expect(throws: DiemError.identityMismatch) {
+      try Profile(encoding: mixed(key: first, devices: first, content: second))
+    }
+  }
+
+  @Test func sealedIdentityKeyOpensOnlyForItsRecipient() async throws {
+    let identity = try await Identity(data: [], using: backend)
+    let recipient = try await backend.makeEncryptionKey(.p256)
+    let sealed = try await identity.identityKey!.sealed(to: recipient.publicKey, using: backend)
+    let decoded = try SealedIdentityKey(encoding: sealed.encoding)
+    let opened = try await decoded.open(with: recipient, using: backend)
+    #expect(opened.publicKey == identity.profile.identityKey)
+
+    var restored = try await Identity(
+      profile: identity.profile, deviceKey: identity.deviceKey, identityKey: opened, using: backend)
+    try await restored.renew().verify(using: backend)
+
+    let other = try await backend.makeEncryptionKey(.p256)
+    await #expect(throws: DiemError.identityMismatch) {
+      try await decoded.open(with: other, using: backend)
+    }
+  }
+
+  @Test func committedVectorsDecodeAndVerify() async throws {
+    struct Fixture: Decodable {
+      struct Vector: Decodable { let profile, proof, sealedIdentityKey, identityID: String }
+      let now: UInt64
+      let vectors: [Vector]
+    }
+    func bytes(_ hex: String) -> [UInt8] {
+      var result: [UInt8] = []
+      var index = hex.startIndex
+      while index < hex.endIndex {
+        let next = hex.index(index, offsetBy: 2)
+        result.append(UInt8(hex[index..<next], radix: 16)!)
+        index = next
+      }
+      return result
+    }
+    let url = URL(filePath: #filePath).deletingLastPathComponent()
+      .appending(path: "../Vectors/diem-v3.json")
+    let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+    for vector in fixture.vectors {
+      let profile = try Profile(encoding: bytes(vector.profile))
+      #expect(profile.id.bytes == bytes(vector.identityID))
+      try await profile.verify(using: backend, at: fixture.now)
+      try await Proof(encoding: bytes(vector.proof)).verify(
+        against: profile, using: backend, at: fixture.now)
+      #expect(try SealedIdentityKey(encoding: bytes(vector.sealedIdentityKey)).identityKey
+        == profile.identityKey)
+    }
+  }
+}

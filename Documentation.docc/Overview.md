@@ -1,18 +1,12 @@
-# Diem cryptographic primitives
+# Diem
 
 @Metadata {
-@TechnologyRoot
+  @TechnologyRoot
 }
 
-Diem supplies canonical CBOR, key operations, signatures, encryption and private
-share primitives. BlahDiem owns device authority, enrollment, profiles and proofs.
+Portable identities built from keys, signed messages, device-certified profiles and proofs.
 
 ## Topics
 
-- `/DiemPortable`
-
 - `/Diem`
-- `/DiemStores`
 - `/DiemSwiftCrypto`
-- `/DiemStoresInMemory`
-- `/DiemStoresKeychain`

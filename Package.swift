@@ -11,70 +11,25 @@ let package = Package(
     .visionOS(.v2),
   ],
   products: [
-    // Portable CBOR and key operations, including Swift Embedded targets.
-    .library(name: "DiemPortable", targets: ["DiemPortable"]),
-    // Reusable encryption and private share primitives.
+    // Foundation-free CBOR, keys, signed messages, identities, profiles and proofs.
     .library(name: "Diem", targets: ["Diem"]),
-    // No-op crypto backend for tests.
-    .library(name: "DiemMocks", targets: ["DiemMocks"]),
-    // Swift Crypto backend (HPKE classic; PQC on OS 26+).
+    // A CryptoBackend on Swift Crypto, with Secure Enclave keys on Apple platforms.
     .library(name: "DiemSwiftCrypto", targets: ["DiemSwiftCrypto"]),
-    // Share storage contracts and backends.
-    .library(name: "DiemStores", targets: ["DiemStores"]),
-    .library(name: "DiemStoresInMemory", targets: ["DiemStoresInMemory"]),
-    .library(name: "DiemStoresKeychain", targets: ["DiemStoresKeychain"]),
-    .library(name: "DiemSecretMemory", targets: ["DiemSecretMemory"]),
+    // Writes cross-language wire vectors.
+    .executable(name: "diem-vectors", targets: ["DiemVectors"]),
   ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-crypto.git", from: "4.2.0"),
     .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
   ],
   targets: [
-    // MARK: Core
-    .target(name: "DiemPortable"),
-    .target(
-      name: "Diem",
-      dependencies: ["DiemPortable"]
-    ),
-    .target(
-      name: "DiemMocks",
-      dependencies: ["Diem"]
-    ),
+    .target(name: "Diem"),
     .target(
       name: "DiemSwiftCrypto",
-      dependencies: [
-        "Diem",
-        .product(name: "Crypto", package: "swift-crypto"),
-      ]
+      dependencies: ["Diem", .product(name: "Crypto", package: "swift-crypto")]
     ),
-    .target(name: "DiemSecretMemory"),
-
-    // MARK: Stores
-    .target(
-      name: "DiemStores",
-      dependencies: ["Diem"]
-    ),
-    .target(
-      name: "DiemStoresInMemory",
-      dependencies: ["Diem", "DiemStores"]
-    ),
-    .target(
-      name: "DiemStoresKeychain",
-      dependencies: [
-        "Diem",
-        "DiemStores",
-        "DiemSwiftCrypto",
-      ]
-    ),
-
-    // MARK: Tests
-    .testTarget(
-      name: "DiemTests",
-      dependencies: [
-        "DiemSwiftCrypto",
-        "DiemStoresInMemory",
-      ]
-    ),
+    .executableTarget(name: "DiemVectors", dependencies: ["DiemSwiftCrypto"]),
+    .testTarget(name: "DiemTests", dependencies: ["DiemSwiftCrypto"]),
   ],
   swiftLanguageModes: [.v6]
 )
