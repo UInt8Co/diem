@@ -9,9 +9,12 @@ public protocol CryptoBackend: Sendable {
   /// `count` cryptographically secure random bytes.
   func randomBytes(count: Int) -> [UInt8]
 
-  /// A new software signing key, or the one whose secret is `rawRepresentation`.
-  func makePrivateKey(_ algorithm: PublicKey.Algorithm, restoring rawRepresentation: [UInt8]?)
-    async throws -> PrivateKey
+  /// A new software signing key for `purpose`, or the one whose secret is
+  /// `rawRepresentation`.
+  func makePrivateKey(
+    _ algorithm: PublicKey.Algorithm, for purpose: PublicKey.Purpose,
+    restoring rawRepresentation: [UInt8]?
+  ) async throws -> PrivateKey
 
   /// Whether `signature` is `key`'s signature over `message`.
   func isValidSignature(_ signature: [UInt8], for message: [UInt8], by key: PublicKey)
@@ -28,15 +31,15 @@ public protocol CryptoBackend: Sendable {
 }
 
 extension CryptoBackend {
-  /// A new software signing key.
-  public func makePrivateKey(_ algorithm: PublicKey.Algorithm = .ed25519) async throws
-    -> PrivateKey
-  {
-    try await makePrivateKey(algorithm, restoring: nil)
+  /// A new software signing key for `purpose`, ML-DSA-65 by default.
+  public func makePrivateKey(
+    _ algorithm: PublicKey.Algorithm = .mlDSA65, for purpose: PublicKey.Purpose
+  ) async throws -> PrivateKey {
+    try await makePrivateKey(algorithm, for: purpose, restoring: nil)
   }
 
-  /// A new software encryption key.
-  public func makeEncryptionKey(_ algorithm: EncryptionPublicKey.Algorithm = .x25519)
+  /// A new software encryption key, X-Wing by default.
+  public func makeEncryptionKey(_ algorithm: EncryptionPublicKey.Algorithm = .xWing)
     async throws -> EncryptionPrivateKey
   {
     try await makeEncryptionKey(algorithm, restoring: nil)

@@ -13,23 +13,23 @@ public struct SwiftCryptoBackend: CryptoBackend {
     return (0..<count).map { _ in UInt8.random(in: .min ... .max, using: &generator) }
   }
 
-  public func makePrivateKey(_ algorithm: PublicKey.Algorithm, restoring raw: [UInt8]?)
-    async throws -> PrivateKey
-  {
+  public func makePrivateKey(
+    _ algorithm: PublicKey.Algorithm, for purpose: PublicKey.Purpose, restoring raw: [UInt8]?
+  ) async throws -> PrivateKey {
     try normalized(.invalidKey) {
       switch algorithm {
       case .ed25519:
         let key = try raw.map { try Curve25519.Signing.PrivateKey(rawRepresentation: $0) }
           ?? Curve25519.Signing.PrivateKey()
         return try PrivateKey(
-          publicKey: PublicKey(algorithm: algorithm, rawRepresentation: Array(key.publicKey.rawRepresentation)),
+          publicKey: PublicKey(purpose: purpose, algorithm: algorithm, rawRepresentation: Array(key.publicKey.rawRepresentation)),
           protection: .software, rawRepresentation: Array(key.rawRepresentation)
         ) { try Array(key.signature(for: $0)) }
       case .p256:
         let key = try raw.map { try P256.Signing.PrivateKey(rawRepresentation: $0) }
           ?? P256.Signing.PrivateKey()
         return try PrivateKey(
-          publicKey: PublicKey(algorithm: algorithm, rawRepresentation: Array(key.publicKey.x963Representation)),
+          publicKey: PublicKey(purpose: purpose, algorithm: algorithm, rawRepresentation: Array(key.publicKey.x963Representation)),
           protection: .software, rawRepresentation: Array(key.rawRepresentation)
         ) { try Array(key.signature(for: $0).rawRepresentation) }
       case .mlDSA65:
@@ -39,7 +39,7 @@ public struct SwiftCryptoBackend: CryptoBackend {
         let key = try raw.map { try MLDSA65.PrivateKey(seedRepresentation: Data($0), publicKey: nil) }
           ?? MLDSA65.PrivateKey()
         return try PrivateKey(
-          publicKey: PublicKey(algorithm: algorithm, rawRepresentation: Array(key.publicKey.rawRepresentation)),
+          publicKey: PublicKey(purpose: purpose, algorithm: algorithm, rawRepresentation: Array(key.publicKey.rawRepresentation)),
           protection: .software, rawRepresentation: Array(key.seedRepresentation)
         ) { try Array(key.signature(for: $0)) }
       }

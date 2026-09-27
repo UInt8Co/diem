@@ -15,6 +15,18 @@ let proof = try await identity.prove(challenge)
 try await proof.verify(against: identity.profile, using: backend)
 ```
 
+### Keys
+
+Every key serves one purpose, named in its encoding and therefore in its ID: an identity
+key only certifies devices, a device key only signs profile content and proofs, and an
+encryption key only opens what is sealed to it. Records accept a key only in the role its
+``PublicKey/Purpose`` allows, and an identity refuses a device whose key material is its
+own identity key.
+
+New keys are post-quantum by default: ML-DSA-65 for signatures and X-Wing for encryption.
+Ed25519, P-256 and X25519 remain for callers that choose them explicitly, such as
+hardware-backed P-256 keys; they are not post-quantum.
+
 A ``CryptoBackend`` supplies signatures, verification, encryption and the current time.
 `DiemSwiftCrypto` provides one on Swift Crypto.
 

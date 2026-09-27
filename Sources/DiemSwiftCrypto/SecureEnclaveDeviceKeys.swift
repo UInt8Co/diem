@@ -5,24 +5,25 @@
   import Security
 
   extension PrivateKey {
-    /// A new P-256 signing key generated inside the Secure Enclave, and the opaque
-    /// reference that restores it on this device.
-    public static func secureEnclave(accessControl: SecAccessControl) throws
-      -> (key: PrivateKey, reference: Data)
-    {
+    /// A new P-256 signing key for `purpose` generated inside the Secure Enclave, and the
+    /// opaque reference that restores it on this device. P-256 is not post-quantum.
+    public static func secureEnclave(
+      for purpose: PublicKey.Purpose, accessControl: SecAccessControl
+    ) throws -> (key: PrivateKey, reference: Data) {
       guard SecureEnclave.isAvailable else { throw DiemError.unsupportedAlgorithm }
       let key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: accessControl)
-      return (try PrivateKey(key), key.dataRepresentation)
+      return (try PrivateKey(key, purpose: purpose), key.dataRepresentation)
     }
 
-    /// The Secure Enclave signing key that `reference` names on this device.
-    public init(secureEnclaveReference reference: Data) throws {
-      try self.init(SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: reference))
-    }
-
-    private init(_ key: SecureEnclave.P256.Signing.PrivateKey) throws {
+    /// The Secure Enclave signing key for `purpose` that `reference` names on this device.
+    public init(secureEnclaveReference reference: Data, for purpose: PublicKey.Purpose) throws {
       try self.init(
-        publicKey: PublicKey(algorithm: .p256, rawRepresentation: Array(key.publicKey.x963Representation)),
+        SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: reference), purpose: purpose)
+    }
+
+    private init(_ key: SecureEnclave.P256.Signing.PrivateKey, purpose: PublicKey.Purpose) throws {
+      try self.init(
+        publicKey: PublicKey(purpose: purpose, algorithm: .p256, rawRepresentation: Array(key.publicKey.x963Representation)),
         protection: .hardware, rawRepresentation: nil
       ) { try Array(key.signature(for: $0).rawRepresentation) }
     }
@@ -30,7 +31,7 @@
 
   extension EncryptionPrivateKey {
     /// A new P-256 encryption key generated inside the Secure Enclave, and the opaque
-    /// reference that restores it on this device.
+    /// reference that restores it on this device. P-256 is not post-quantum.
     public static func secureEnclave(accessControl: SecAccessControl) throws
       -> (key: EncryptionPrivateKey, reference: Data)
     {

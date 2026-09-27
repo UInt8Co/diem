@@ -16,7 +16,7 @@ public struct Identity: Sendable {
     data: [UInt8], identityKey: IdentityPrivateKey, deviceKey: DevicePrivateKey,
     using backend: any CryptoBackend
   ) async throws {
-    guard deviceKey.publicKey.key != identityKey.publicKey.key else {
+    guard !deviceKey.publicKey.key.hasSameMaterial(as: identityKey.publicKey.key) else {
       throw DiemError.identityMismatch
     }
     let certificate = try await DeviceCertificate.issue(
@@ -31,7 +31,7 @@ public struct Identity: Sendable {
     self.backend = backend
   }
 
-  /// Creates an identity with new software identity and device keys.
+  /// Creates an identity with new ML-DSA-65 software identity and device keys.
   public init(data: [UInt8], using backend: any CryptoBackend) async throws {
     try await self.init(
       data: data, identityKey: .generate(using: backend), deviceKey: .generate(using: backend),
@@ -79,7 +79,9 @@ public struct Identity: Sendable {
   /// Certifies `device` in the current generation. Requires the identity key.
   @discardableResult
   public mutating func add(_ device: DevicePublicKey) async throws -> Profile {
-    guard device.key != profile.identityKey.key else { throw DiemError.identityMismatch }
+    guard !device.key.hasSameMaterial(as: profile.identityKey.key) else {
+      throw DiemError.identityMismatch
+    }
     let keys = profile.devices.map(\.device).filter { $0 != device } + [device]
     let devices = try await certify(keys, generation: profile.generation)
     return try await publish(devices: devices, data: profile.data)

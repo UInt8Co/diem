@@ -48,7 +48,7 @@ public struct DeviceCertificate: Hashable, Sendable {
   func verify(identityKey: IdentityPublicKey, at time: UInt64, using backend: some CryptoBackend)
     async throws
   {
-    guard identityID == identityKey.id, device.key != identityKey.key else {
+    guard identityID == identityKey.id, !device.key.hasSameMaterial(as: identityKey.key) else {
       throw DiemError.identityMismatch
     }
     try validity.require(at: time, maximumLifetime: Self.maximumLifetime)

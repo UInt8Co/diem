@@ -31,9 +31,10 @@ public struct SealedIdentityKey: Hashable, Sendable {
     guard key.publicKey == recipient else { throw DiemError.identityMismatch }
     let secret = try await key.open(
       box, context: Self.context(identityKey: identityKey, recipient: recipient))
-    let restored = try await backend.makePrivateKey(identityKey.key.algorithm, restoring: secret)
+    let restored = try await backend.makePrivateKey(
+      identityKey.key.algorithm, for: .identity, restoring: secret)
     guard restored.publicKey == identityKey.key else { throw DiemError.decryptionFailed }
-    return IdentityPrivateKey(restored)
+    return try IdentityPrivateKey(restored)
   }
 
   fileprivate init(identityKey: IdentityPublicKey, recipient: EncryptionPublicKey, box: SealedBox) {

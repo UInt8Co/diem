@@ -5,6 +5,8 @@ Android Keystore (API 31 or later). Persist only the alias prefix. Its public ke
 uncompressed encoding, signing uses IEEE P1363, and opening uses the same RFC 9180 suite
 and authenticated context as Diem's P-256 backend. An application backend wraps these
 operations as Diem `PrivateKey` and `EncryptionPrivateKey` values with hardware protection.
+The signing alias is a device key; wrap it with the `device` purpose and never as an
+identity key. These keys are P-256, which is not post-quantum.
 
 Request StrongBox explicitly when required. Creation fails if the requested backend or key
 purpose is unavailable. Read the protection level of **both** keys, and report software

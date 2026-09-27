@@ -67,17 +67,28 @@ function tagged(encoded: Uint8Array, tag: string, length: number) {
   assert(a[0] === tag && a[1] === 3n);
   return a;
 }
-async function verify(encodedKey: Uint8Array, message: Uint8Array, signature: Uint8Array) {
-  const key = array(decode(encodedKey), 4);
-  assert(key[0] === "Diem/key" && key[1] === 2n && (key[2] === 1n || key[2] === 2n));
-  const alg = key[2] === 1n ? { name: "Ed25519" } : { name: "ECDSA", namedCurve: "P-256", hash: "SHA-256" };
-  const imported = await crypto.subtle.importKey("raw", new Uint8Array(bytes(key[3])), alg, false, ["verify"]);
+// Signing keys are ["Diem/key", 3, purpose, algorithm, raw]: purpose 1 is identity, 2 is device.
+const algorithms = new Map<bigint, { format: string; alg: Algorithm | EcdsaParams & EcKeyImportParams }>([
+  [1n, { format: "raw", alg: { name: "Ed25519" } }],
+  [2n, { format: "raw", alg: { name: "ECDSA", namedCurve: "P-256", hash: "SHA-256" } }],
+  [5n, { format: "raw-public", alg: { name: "ML-DSA-65" } }],
+]);
+function signingKey(encodedKey: Uint8Array, purpose: bigint) {
+  const key = array(decode(encodedKey), 5);
+  assert(key[0] === "Diem/key" && key[1] === 3n && key[2] === purpose);
+  const entry = algorithms.get(key[3] as bigint);
+  assert(entry);
+  return { ...entry, raw: bytes(key[4]) };
+}
+async function verify(encodedKey: Uint8Array, purpose: bigint, message: Uint8Array, signature: Uint8Array) {
+  const { format, alg, raw } = signingKey(encodedKey, purpose);
+  const imported = await crypto.subtle.importKey(format as "raw", new Uint8Array(raw), alg, false, ["verify"]);
   return crypto.subtle.verify(alg, imported, new Uint8Array(signature), new Uint8Array(message));
 }
-async function verifySigned(encodedKey: Uint8Array, message: Uint8Array, signature: Uint8Array) {
-  assert(await verify(encodedKey, message, signature));
+async function verifySigned(encodedKey: Uint8Array, purpose: bigint, message: Uint8Array, signature: Uint8Array) {
+  assert(await verify(encodedKey, purpose, message, signature));
   const tampered = message.slice(); tampered[tampered.length - 1] ^= 1;
-  assert(!await verify(encodedKey, tampered, signature));
+  assert(!await verify(encodedKey, purpose, tampered, signature));
 }
 
 const fixture = JSON.parse(await Deno.readTextFile(new URL("../Tests/Vectors/diem-v3.json", import.meta.url)));
@@ -86,27 +97,33 @@ for (const v of fixture.vectors) {
   const identityKey = hex(v.identityKey), deviceKey = hex(v.deviceKey);
   const identityID = hex(v.identityID), deviceID = hex(v.deviceID);
   assert(equal(await hash(identityKey), identityID) && equal(await hash(deviceKey), deviceID));
+  // Each key serves one purpose.
+  assertThrows(() => signingKey(identityKey, 2n));
+  assertThrows(() => signingKey(deviceKey, 1n));
 
   const certificate = hex(v.certificateMessage);
-  await verifySigned(identityKey, certificate, hex(v.certificateSignature));
+  await verifySigned(identityKey, 1n, certificate, hex(v.certificateSignature));
   const c = tagged(certificate, "Diem/device", 7);
   assert(equal(bytes(c[2]), identityID) && c[3] === 1n && equal(bytes(c[4]), deviceKey));
 
   const content = hex(v.contentMessage);
-  await verifySigned(deviceKey, content, hex(v.contentSignature));
-  assert(!await verify(identityKey, content, hex(v.contentSignature)));
+  await verifySigned(deviceKey, 2n, content, hex(v.contentSignature));
+  assert(!await verify(identityKey, 1n, content, hex(v.contentSignature)));
   const p = tagged(content, "Diem/profile-content", 10);
   assert(equal(bytes(p[2]), identityID) && p[3] === 1n && equal(bytes(p[4]), deviceID) && p[5] === 1n);
   const profile = tagged(hex(v.profile), "Diem/profile", 5);
   assert(equal(bytes(profile[2]), identityKey));
 
   const proof = hex(v.proofMessage);
-  await verifySigned(deviceKey, proof, hex(v.proofSignature));
+  await verifySigned(deviceKey, 2n, proof, hex(v.proofSignature));
   const q = tagged(proof, "Diem/proof", 5);
   assert(equal(bytes(q[2]), identityID) && equal(bytes(q[3]), deviceID));
   assert(equal(bytes(q[4]), new TextEncoder().encode("cross-language proof")));
 
-  tagged(hex(v.sealedIdentityKey), "Diem/sealed-identity-key", 6);
+  const s = tagged(hex(v.sealedIdentityKey), "Diem/sealed-identity-key", 6);
+  assert(equal(bytes(s[2]), identityKey));
+  const recipient = array(decode(bytes(s[3])), 5);
+  assert(recipient[0] === "Diem/key" && recipient[1] === 3n && recipient[2] === 3n);
 }
 for (const malformed of ["a200010002", "1800", "0000", "9fff"]) {
   assertThrows(() => decode(hex(malformed)));

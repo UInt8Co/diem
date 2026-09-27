@@ -112,7 +112,7 @@ import Testing
 
   @Test func sealedIdentityKeyOpensOnlyForItsRecipient() async throws {
     let identity = try await Identity(data: [], using: backend)
-    let recipient = try await backend.makeEncryptionKey(.p256)
+    let recipient = try await backend.makeEncryptionKey()
     let sealed = try await identity.identityKey!.sealed(to: recipient.publicKey, using: backend)
     let decoded = try SealedIdentityKey(encoding: sealed.encoding)
     let opened = try await decoded.open(with: recipient, using: backend)
@@ -122,10 +122,25 @@ import Testing
       profile: identity.profile, deviceKey: identity.deviceKey, identityKey: opened, using: backend)
     try await restored.renew().verify(using: backend)
 
-    let other = try await backend.makeEncryptionKey(.p256)
+    let other = try await backend.makeEncryptionKey()
     await #expect(throws: DiemError.identityMismatch) {
       try await decoded.open(with: other, using: backend)
     }
+  }
+
+  @Test func identityKeyMaterialNeverActsAsADevice() async throws {
+    let identityKey = try await backend.makePrivateKey(for: .identity)
+    let sameMaterial = try DevicePrivateKey(
+      await backend.makePrivateKey(.mlDSA65, for: .device, restoring: identityKey.rawRepresentation))
+    await #expect(throws: DiemError.identityMismatch) {
+      try await Identity(
+        data: [], identityKey: IdentityPrivateKey(identityKey), deviceKey: sameMaterial,
+        using: backend)
+    }
+    var owner = try await Identity(
+      data: [], identityKey: IdentityPrivateKey(identityKey),
+      deviceKey: .generate(using: backend), using: backend)
+    await #expect(throws: DiemError.identityMismatch) { try await owner.add(sameMaterial.publicKey) }
   }
 
   @Test func committedVectorsDecodeAndVerify() async throws {

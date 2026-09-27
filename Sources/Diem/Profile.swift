@@ -68,7 +68,7 @@ public struct Profile: Hashable, Sendable {
     else { throw .invalidEncoding }
     for certificate in devices {
       guard certificate.identityID == identityKey.id, certificate.generation == generation,
-        certificate.device.key != identityKey.key
+        !certificate.device.key.hasSameMaterial(as: identityKey.key)
       else { throw .identityMismatch }
     }
     guard let certificate = devices.first(where: { $0.device.id == signerID }) else {

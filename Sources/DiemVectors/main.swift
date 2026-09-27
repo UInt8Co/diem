@@ -7,9 +7,10 @@ struct FixedTime: CryptoBackend {
   let base = SwiftCryptoBackend()
   let now: UInt64
   func randomBytes(count: Int) -> [UInt8] { base.randomBytes(count: count) }
-  func makePrivateKey(_ algorithm: PublicKey.Algorithm, restoring raw: [UInt8]?) async throws
-    -> PrivateKey
-  { try await base.makePrivateKey(algorithm, restoring: raw) }
+  func makePrivateKey(
+    _ algorithm: PublicKey.Algorithm, for purpose: PublicKey.Purpose, restoring raw: [UInt8]?
+  ) async throws -> PrivateKey
+  { try await base.makePrivateKey(algorithm, for: purpose, restoring: raw) }
   func isValidSignature(_ signature: [UInt8], for message: [UInt8], by key: PublicKey)
     async throws -> Bool
   { try await base.isValidSignature(signature, for: message, by: key) }
@@ -27,9 +28,9 @@ extension [UInt8] {
 
 let backend = FixedTime(now: 1_800_000_000)
 var vectors: [[String: Any]] = []
-for algorithm: PublicKey.Algorithm in [.ed25519, .p256] {
-  let root = try await backend.makePrivateKey(algorithm)
-  let identityKey = IdentityPrivateKey(root)
+for algorithm: PublicKey.Algorithm in [.mlDSA65, .ed25519, .p256] {
+  let root = try await backend.makePrivateKey(algorithm, for: .identity)
+  let identityKey = try IdentityPrivateKey(root)
   let deviceKey = try await DevicePrivateKey.generate(algorithm, using: backend)
   let identity = try await Identity(
     data: Array("cross-language profile".utf8), identityKey: identityKey, deviceKey: deviceKey,
