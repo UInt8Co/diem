@@ -10,18 +10,18 @@ jobs:
   crypto-linux:
     name: Portable cryptography
     runs-on: ubuntu-24.04
+    container: swift:6.4.0-noble
     steps:
       - uses: actions/checkout@v4
-      - uses: swift-actions/setup-swift@v3
-        with:
-          swift-version: "6.4.0"
       - name: Test portable contracts
         run: swift test -j 4
       - name: Build vector generator
         run: swift build --product diem-vectors -j 4
-      - uses: swiftwasm/setup-swiftwasm@v2
-        with:
-          tag: swift-6.4.0-RELEASE
+      - name: Install Swift SDK for WebAssembly
+        run: >-
+          swift sdk install
+          https://download.swift.org/swift-6.4.0-release/wasm-sdk/swift-6.4.0-RELEASE/swift-6.4.0-RELEASE_wasm.artifactbundle.tar.gz
+          --checksum f07b7be3c586d92d7a07051fc6d303b87ebea67eadc40640ba59d5a8b79aa86d
       - name: Compile portable core in Embedded mode
         run: swift build --swift-sdk swift-6.4.0-RELEASE_wasm-embedded --target Diem -c release -j 4
       - uses: denoland/setup-deno@v2
