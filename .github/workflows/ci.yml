@@ -19,6 +19,11 @@ jobs:
         run: swift test -j 4
       - name: Build vector generator
         run: swift build --product diem-vectors -j 4
+      - uses: swiftwasm/setup-swiftwasm@v2
+        with:
+          tag: swift-6.4.0-RELEASE
+      - name: Compile portable core in Embedded mode
+        run: swift build --swift-sdk swift-6.4.0-RELEASE_wasm-embedded --target Diem -c release -j 4
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x

@@ -14,7 +14,7 @@ public struct Identity: Sendable {
   /// Creates an identity whose only device is `deviceKey`, publishing `data` at revision 1.
   public init(
     data: [UInt8], identityKey: IdentityPrivateKey, deviceKey: DevicePrivateKey,
-    using backend: any CryptoBackend
+    using backend: some CryptoBackend
   ) async throws {
     guard !deviceKey.publicKey.key.hasSameMaterial(as: identityKey.publicKey.key) else {
       throw DiemError.identityMismatch
@@ -32,7 +32,7 @@ public struct Identity: Sendable {
   }
 
   /// Creates an identity with new ML-DSA-65 software identity and device keys.
-  public init(data: [UInt8], using backend: any CryptoBackend) async throws {
+  public init(data: [UInt8], using backend: some CryptoBackend) async throws {
     try await self.init(
       data: data, identityKey: .generate(using: backend), deviceKey: .generate(using: backend),
       using: backend)
@@ -41,7 +41,7 @@ public struct Identity: Sendable {
   /// Opens an existing identity on a device that `profile` lists.
   public init(
     profile: Profile, deviceKey: DevicePrivateKey, identityKey: IdentityPrivateKey? = nil,
-    using backend: any CryptoBackend
+    using backend: some CryptoBackend
   ) async throws {
     try await profile.verify(using: backend, at: profile.validity.notBefore)
     guard profile.device(deviceKey.publicKey.id) != nil else { throw DiemError.deviceNotListed }
@@ -60,7 +60,7 @@ public struct Identity: Sendable {
   public mutating func update(data: [UInt8]) async throws -> Profile {
     var devices = profile.devices
     if identityKey != nil, devices.contains(where: { !$0.validity.contains(backend.now) }) {
-      devices = try await certify(devices.map(\.device), generation: profile.generation)
+      devices = try await certify(devices.map { $0.device }, generation: profile.generation)
     }
     return try await publish(devices: devices, data: data)
   }
@@ -71,7 +71,7 @@ public struct Identity: Sendable {
   public mutating func renew() async throws -> Profile {
     var devices = profile.devices
     if identityKey != nil {
-      devices = try await certify(devices.map(\.device), generation: profile.generation)
+      devices = try await certify(devices.map { $0.device }, generation: profile.generation)
     }
     return try await publish(devices: devices, data: profile.data)
   }
@@ -82,7 +82,7 @@ public struct Identity: Sendable {
     guard !device.key.hasSameMaterial(as: profile.identityKey.key) else {
       throw DiemError.identityMismatch
     }
-    let keys = profile.devices.map(\.device).filter { $0 != device } + [device]
+    let keys = profile.devices.map { $0.device }.filter { $0 != device } + [device]
     let devices = try await certify(keys, generation: profile.generation)
     return try await publish(devices: devices, data: profile.data)
   }
@@ -93,7 +93,7 @@ public struct Identity: Sendable {
   public mutating func remove(_ id: Digest) async throws -> Profile {
     guard profile.device(id) != nil else { throw DiemError.deviceNotListed }
     guard id != deviceKey.publicKey.id else { throw DiemError.identityMismatch }
-    let keys = profile.devices.map(\.device).filter { $0.id != id }
+    let keys = profile.devices.map { $0.device }.filter { $0.id != id }
     let devices = try await certify(keys, generation: profile.generation + 1)
     return try await publish(devices: devices, data: profile.data)
   }

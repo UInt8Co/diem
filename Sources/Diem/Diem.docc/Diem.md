@@ -30,6 +30,16 @@ hardware-backed P-256 keys; they are not post-quantum.
 A ``CryptoBackend`` supplies signatures, verification, encryption and the current time.
 `DiemSwiftCrypto` provides one on Swift Crypto.
 
+### Embedded Swift
+
+The Foundation-free `Diem` target supports Swift 6.4 Embedded, including WebAssembly.
+Supply a concrete ``CryptoBackend`` to identity initializers and verification methods
+so the compiler can specialize their generic calls. The stored identity backend
+remains type-erased. Platform cryptography belongs to the supplied backend;
+`DiemSwiftCrypto` is a separate, non-Embedded integration.
+Embedded executables using the CBOR decoder must link `swiftUnicodeDataTables` for
+Swift's Unicode-aware text equality and hashing; unused table sections can be stripped.
+
 ## Topics
 
 ### Identities

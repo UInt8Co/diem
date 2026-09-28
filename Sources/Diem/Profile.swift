@@ -64,7 +64,7 @@ public struct Profile: Hashable, Sendable {
     previousDigest = revision == 1 ? nil : try Digest(bytes: previous)
 
     guard (1...Self.maximumDevices).contains(devices.count),
-      Set(devices.map(\.device)).count == devices.count
+      Set(devices.map { $0.device }).count == devices.count
     else { throw .invalidEncoding }
     for certificate in devices {
       guard certificate.identityID == identityKey.id, certificate.generation == generation,
