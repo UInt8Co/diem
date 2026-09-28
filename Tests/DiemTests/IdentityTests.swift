@@ -31,6 +31,41 @@ import Testing
     try await second.verify(using: backend)
   }
 
+  @Test func chosenLifetimesSurvivePublicationRenewalAndReopening() async throws {
+    let day: UInt64 = 86400
+    var owner = try await Identity(data: [1], profileLifetime: 90 * day,
+      deviceLifetime: 90 * day, using: backend)
+    #expect(owner.profile.validity.lifetime == 90 * day)
+    #expect(owner.profile.devices[0].validity.lifetime == 90 * day)
+    backend.advance(by: 60 * day)
+    try await owner.profile.verify(using: backend)
+    // A device cannot publish beyond its certificate without the identity key.
+    var device = try await Identity(profile: owner.profile, deviceKey: owner.deviceKey,
+      profileLifetime: 90 * day, using: backend)
+    #expect(try await device.update(data: [2]).validity.lifetime == 30 * day)
+    try await owner.renew()
+    #expect(owner.profile.validity.lifetime == 90 * day)
+    backend.advance(by: 91 * day)
+    await #expect(throws: DiemError.expired) { try await owner.profile.verify(using: backend) }
+    var reopened = try await Identity(profile: owner.profile, deviceKey: owner.deviceKey,
+      identityKey: owner.identityKey, profileLifetime: 120 * day, deviceLifetime: 180 * day,
+      using: backend)
+    try await reopened.renew().verify(using: backend)
+    #expect(reopened.profile.validity.lifetime == 120 * day)
+    #expect(reopened.profile.devices[0].validity.lifetime == 180 * day)
+  }
+
+  @Test func invalidLifetimesFailWithoutArithmeticOverflow() async throws {
+    for lifetime: UInt64 in [0, UInt64(Int64.max), UInt64.max] {
+      await #expect(throws: DiemError.invalidValidity) {
+        try await Identity(data: [], profileLifetime: lifetime, using: backend)
+      }
+      await #expect(throws: DiemError.invalidValidity) {
+        try await Identity(data: [], deviceLifetime: lifetime, using: backend)
+      }
+    }
+  }
+
   @Test func addedDeviceSignsProfilesAndProofsWithoutTheIdentityKey() async throws {
     var owner = try await Identity(data: [1], using: backend)
     let laptopKey = try await DevicePrivateKey.generate(.p256, using: backend)
@@ -74,11 +109,11 @@ import Testing
     var other = try await Identity(
       profile: try await owner.add(otherKey.publicKey), deviceKey: otherKey, using: backend)
 
-    backend.advance(by: Profile.maximumLifetime)
+    backend.advance(by: Profile.defaultLifetime)
     await #expect(throws: DiemError.expired) { try await owner.profile.verify(using: backend) }
     try await other.renew().verify(using: backend)
 
-    backend.advance(by: DeviceCertificate.maximumLifetime)
+    backend.advance(by: DeviceCertificate.defaultLifetime)
     await #expect(throws: DiemError.expired) { try await other.update(data: [2]) }
     // The identity key reissues expired certificates on update.
     let renewed = try await owner.update(data: [3])

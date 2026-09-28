@@ -7,6 +7,9 @@ public struct Identity: Sendable {
   /// The identity private key, if this device holds it.
   public let identityKey: IdentityPrivateKey?
   public let backend: any CryptoBackend
+  /// Lifetimes used when this instance publishes content or certifies devices.
+  public let profileLifetime: UInt64
+  public let deviceLifetime: UInt64
 
   /// The identity ID.
   public var id: Digest { profile.id }
@@ -14,35 +17,45 @@ public struct Identity: Sendable {
   /// Creates an identity whose only device is `deviceKey`, publishing `data` at revision 1.
   public init(
     data: [UInt8], identityKey: IdentityPrivateKey, deviceKey: DevicePrivateKey,
+    profileLifetime: UInt64 = Profile.defaultLifetime,
+    deviceLifetime: UInt64 = DeviceCertificate.defaultLifetime,
     using backend: some CryptoBackend
   ) async throws {
     guard !deviceKey.publicKey.key.hasSameMaterial(as: identityKey.publicKey.key) else {
       throw DiemError.identityMismatch
     }
+    _ = try Validity(starting: backend.now, lifetime: profileLifetime)
     let certificate = try await DeviceCertificate.issue(
       by: identityKey, for: deviceKey.publicKey, generation: 1,
-      validity: Validity(starting: backend.now, lifetime: DeviceCertificate.maximumLifetime))
+      validity: Validity(starting: backend.now, lifetime: deviceLifetime))
     self.profile = try await Profile.sign(
       identityKey: identityKey.publicKey, devices: [certificate], by: deviceKey, revision: 1,
-      previousDigest: nil, validity: Self.contentValidity(for: certificate, at: backend.now),
+      previousDigest: nil, validity: Self.contentValidity(for: certificate, at: backend.now, lifetime: profileLifetime),
       data: data)
     self.deviceKey = deviceKey
     self.identityKey = identityKey
     self.backend = backend
+    self.profileLifetime = profileLifetime
+    self.deviceLifetime = deviceLifetime
   }
 
   /// Creates an identity with new ML-DSA-65 software identity and device keys.
-  public init(data: [UInt8], using backend: some CryptoBackend) async throws {
+  public init(data: [UInt8], profileLifetime: UInt64 = Profile.defaultLifetime,
+    deviceLifetime: UInt64 = DeviceCertificate.defaultLifetime, using backend: some CryptoBackend) async throws {
     try await self.init(
       data: data, identityKey: .generate(using: backend), deviceKey: .generate(using: backend),
-      using: backend)
+      profileLifetime: profileLifetime, deviceLifetime: deviceLifetime, using: backend)
   }
 
   /// Opens an existing identity on a device that `profile` lists.
   public init(
     profile: Profile, deviceKey: DevicePrivateKey, identityKey: IdentityPrivateKey? = nil,
+    profileLifetime: UInt64 = Profile.defaultLifetime,
+    deviceLifetime: UInt64 = DeviceCertificate.defaultLifetime,
     using backend: some CryptoBackend
   ) async throws {
+    _ = try Validity(starting: backend.now, lifetime: profileLifetime)
+    _ = try Validity(starting: backend.now, lifetime: deviceLifetime)
     try await profile.verify(using: backend, at: profile.validity.notBefore)
     guard profile.device(deviceKey.publicKey.id) != nil else { throw DiemError.deviceNotListed }
     if let identityKey, identityKey.publicKey != profile.identityKey {
@@ -52,6 +65,8 @@ public struct Identity: Sendable {
     self.deviceKey = deviceKey
     self.identityKey = identityKey
     self.backend = backend
+    self.profileLifetime = profileLifetime
+    self.deviceLifetime = deviceLifetime
   }
 
   /// Publishes `data` as the next revision. With the identity key, expired device
@@ -107,7 +122,7 @@ public struct Identity: Sendable {
     -> [DeviceCertificate]
   {
     guard let identityKey else { throw DiemError.identityKeyRequired }
-    let validity = try Validity(starting: backend.now, lifetime: DeviceCertificate.maximumLifetime)
+    let validity = try Validity(starting: backend.now, lifetime: deviceLifetime)
     var devices: [DeviceCertificate] = []
     for key in keys {
       devices.append(
@@ -129,15 +144,16 @@ public struct Identity: Sendable {
     let next = try await Profile.sign(
       identityKey: profile.identityKey, devices: live, by: deviceKey,
       revision: profile.revision + 1, previousDigest: profile.digest,
-      validity: Self.contentValidity(for: certificate, at: now), data: data)
+      validity: Self.contentValidity(for: certificate, at: now, lifetime: profileLifetime), data: data)
     profile = next
     return next
   }
 
-  private static func contentValidity(for certificate: DeviceCertificate, at now: UInt64) throws
+  private static func contentValidity(for certificate: DeviceCertificate, at now: UInt64, lifetime: UInt64) throws
     -> Validity
   {
-    let end = min(now + Profile.maximumLifetime, certificate.validity.expiresAt)
+    let requested = try Validity(starting: now, lifetime: lifetime)
+    let end = min(requested.expiresAt, certificate.validity.expiresAt)
     return try Validity(notBefore: now, expiresAt: end)
   }
 }

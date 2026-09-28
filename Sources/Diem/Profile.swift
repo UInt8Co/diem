@@ -1,8 +1,10 @@
 /// An identity's public statement: its key, its certified devices, and application data
 /// signed by one of those devices.
 public struct Profile: Hashable, Sendable {
-  /// The longest validity profile content may have: one day.
-  public static let maximumLifetime: UInt64 = 24 * 60 * 60
+  /// Default publishing lifetime. Applications may choose a different interval.
+  public static let defaultLifetime: UInt64 = 24 * 60 * 60
+  /// The wire timestamp bound; a profile must also fit its signing certificate.
+  public static let maximumLifetime = UInt64(Int64.max)
   /// The most devices one profile may list.
   public static let maximumDevices = 128
 

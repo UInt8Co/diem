@@ -47,7 +47,9 @@ public struct Validity: Hashable, Sendable {
 
   /// The period of `lifetime` seconds starting at `start`.
   public init(starting start: UInt64, lifetime: UInt64) throws(DiemError) {
-    guard start <= UInt64(Int64.max) - lifetime else { throw .invalidValidity }
+    guard lifetime <= UInt64(Int64.max), start <= UInt64(Int64.max) - lifetime else {
+      throw .invalidValidity
+    }
     try self.init(notBefore: start, expiresAt: start + lifetime)
   }
 

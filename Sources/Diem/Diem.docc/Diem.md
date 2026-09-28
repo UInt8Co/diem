@@ -30,6 +30,15 @@ hardware-backed P-256 keys; they are not post-quantum.
 A ``CryptoBackend`` supplies signatures, verification, encryption and the current time.
 `DiemSwiftCrypto` provides one on Swift Crypto.
 
+### Validity
+
+Applications choose `profileLifetime` and `deviceLifetime` when creating or opening an
+``Identity``. They control subsequent publication and certification by that instance.
+Defaults remain one day for profiles and 30 days for certificates; those are defaults,
+not protocol limits. Validity intervals must fit signed 64-bit Unix timestamps. Profile
+content is bounded by its signing certificate, and only the identity key can extend
+device certification. Verification checks the signed intervals at the requested time.
+
 ### Embedded Swift
 
 The Foundation-free `Diem` target supports Swift 6.4 Embedded, including WebAssembly.

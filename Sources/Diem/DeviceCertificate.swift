@@ -3,8 +3,10 @@
 /// Certificates of one ``generation`` form the identity's device set. A profile lists
 /// certificates of a single generation.
 public struct DeviceCertificate: Hashable, Sendable {
-  /// The longest validity a certificate may have: 30 days.
-  public static let maximumLifetime: UInt64 = 30 * 24 * 60 * 60
+  /// Default certificate lifetime. Applications may choose a different interval.
+  public static let defaultLifetime: UInt64 = 30 * 24 * 60 * 60
+  /// The wire timestamp bound. The identity owner chooses certificate validity.
+  public static let maximumLifetime = UInt64(Int64.max)
 
   /// The identity's signed message.
   public let signedMessage: SignedMessage
