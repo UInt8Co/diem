@@ -49,6 +49,16 @@ remains type-erased. Platform cryptography belongs to the supplied backend;
 Embedded executables using the CBOR decoder must link `swiftUnicodeDataTables` for
 Swift's Unicode-aware text equality and hashing; unused table sections can be stripped.
 
+## Recovering on another device
+
+`Identity.enrolling(_:in:identityKey:profileLifetime:deviceLifetime:using:)` uses a
+recovered identity key to certify a fresh device without copying the old device's
+private key. It preserves existing devices and the signed revision chain. The caller
+must obtain the latest trusted profile and enforce its saved version floor before
+recovery, then retain and publish the new revision. Hardware device keys remain on
+the device that created them; optional identity-key synchronization is application
+custody policy, separate from device-key synchronization.
+
 ## Topics
 
 ### Identities
