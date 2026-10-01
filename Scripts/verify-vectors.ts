@@ -15,7 +15,7 @@ function hex(s: string): Uint8Array {
 function equal(a: Uint8Array, b: Uint8Array) { return a.length === b.length && a.every((v, i) => v === b[i]); }
 async function hash(b: Uint8Array) { return new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(b))); }
 
-type Value = bigint | string | Uint8Array | Value[] | Map<string, Value> | boolean | null;
+type Value = bigint | string | Uint8Array | Value[] | Map<string | bigint, Value> | boolean | null;
 function decode(input: Uint8Array): Value {
   assert(input.length <= 262144);
   let p = 0, items = 0;
@@ -39,11 +39,12 @@ function decode(input: Uint8Array): Value {
       return major === 2 ? b : new TextDecoder("utf-8", { fatal: true }).decode(b);
     }
     if (major === 4) return Array.from({ length: Number(n) }, () => read(depth + 1));
-    const map = new Map<string, Value>();
+    const map = new Map<string | bigint, Value>();
     let previous: Uint8Array | undefined;
     for (let i = 0; i < Number(n); i++) {
       const start = p;
-      read(depth + 1);
+      const decodedKey = read(depth + 1);
+      assert(typeof decodedKey === "string" || typeof decodedKey === "bigint");
       const key = input.slice(start, p);
       if (previous) {
         let order = previous.length - key.length;
@@ -51,7 +52,7 @@ function decode(input: Uint8Array): Value {
         assert(order < 0);
       }
       previous = key;
-      map.set(Array.from(key).join(","), read(depth + 1));
+      map.set(decodedKey, read(depth + 1));
     }
     return map;
   }
@@ -60,21 +61,27 @@ function decode(input: Uint8Array): Value {
   return result;
 }
 
-function array(v: Value, length: number): Value[] { assert(Array.isArray(v) && v.length === length); return v; }
+function record(v: Value, required: number): Record<number, Value> {
+  assert(v instanceof Map);
+  const fields: Record<number, Value> = {};
+  for (const [key, value] of v) { assert(typeof key === "bigint" && key >= 0n); fields[Number(key)] = value; }
+  for (let key = 0; key < required; key++) assert(key in fields);
+  return fields;
+}
 function bytes(v: Value): Uint8Array { assert(v instanceof Uint8Array); return v; }
 function tagged(encoded: Uint8Array, tag: string, length: number) {
-  const a = array(decode(encoded), length);
+  const a = record(decode(encoded), length);
   assert(a[0] === tag && a[1] === 3n);
   return a;
 }
-// Signing keys are ["Diem/key", 3, purpose, algorithm, raw]: purpose 1 is identity, 2 is device.
+// Integer-keyed signing records: purpose 1 is identity, 2 is device.
 const algorithms = new Map<bigint, { format: string; alg: Algorithm | EcdsaParams & EcKeyImportParams }>([
   [1n, { format: "raw", alg: { name: "Ed25519" } }],
   [2n, { format: "raw", alg: { name: "ECDSA", namedCurve: "P-256", hash: "SHA-256" } }],
   [5n, { format: "raw-public", alg: { name: "ML-DSA-65" } }],
 ]);
 function signingKey(encodedKey: Uint8Array, purpose: bigint) {
-  const key = array(decode(encodedKey), 5);
+  const key = record(decode(encodedKey), 5);
   assert(key[0] === "Diem/key" && key[1] === 3n && key[2] === purpose);
   const entry = algorithms.get(key[3] as bigint);
   assert(entry);
@@ -122,7 +129,7 @@ for (const v of fixture.vectors) {
 
   const s = tagged(hex(v.sealedIdentityKey), "Diem/sealed-identity-key", 6);
   assert(equal(bytes(s[2]), identityKey));
-  const recipient = array(decode(bytes(s[3])), 5);
+  const recipient = record(decode(bytes(s[3])), 5);
   assert(recipient[0] === "Diem/key" && recipient[1] === 3n && recipient[2] === 3n);
 }
 for (const malformed of ["a200010002", "1800", "0000", "9fff"]) {

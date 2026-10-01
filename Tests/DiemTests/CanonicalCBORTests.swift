@@ -61,3 +61,41 @@ import Testing
     #expect(throws: DiemError.invalidEncoding) { try CBOR.array([]).arrayValue(count: 1) }
   }
 }
+
+@Suite struct RecordEncodingTests {
+  @Test func recordsRequireIntegerKeysAndRequiredFields() throws {
+    let value = CBOR.record([0: .text("record"), 1: .unsigned(1), 100: .bool(true)])
+    #expect(try value.recordValue(requiredKeys: 0..<2)[100] == .bool(true))
+    #expect(throws: DiemError.invalidEncoding) { try value.recordValue(requiredKeys: 0..<3) }
+    #expect(throws: DiemError.invalidEncoding) {
+      try CBOR.map([.text("0"): .unsigned(1)]).recordValue(requiredKeys: 0..<1)
+    }
+    #expect(throws: DiemError.invalidEncoding) {
+      try CBOR.map([.negative(-1): .unsigned(1)]).recordValue(requiredKeys: 0..<0)
+    }
+  }
+
+  @Test func publicKeyExtensionsRetainTheirIdentity() throws {
+    let key = try PublicKey(purpose: .identity, algorithm: .ed25519,
+      rawRepresentation: [UInt8](repeating: 7, count: 32))
+    var fields = try CBOR(decoding: key.encoding).recordValue(requiredKeys: 0..<5)
+    fields[100] = .text("future")
+    let encoding = CBOR.record(fields).encoded
+    let decoded = try PublicKey(encoding: encoding)
+    #expect(decoded.encoding == encoding)
+    #expect(decoded.id == Digest(hashing: encoding))
+    #expect(decoded.id != key.id)
+  }
+
+  @Test func profileExtensionsKeepSignedContentVerifiable() async throws {
+    let backend = TestBackend()
+    let identity = try await Identity(data: [], using: backend)
+    var fields = try CBOR(decoding: identity.profile.encoding).recordValue(requiredKeys: 0..<5)
+    fields[100] = .text("future")
+    let encoded = CBOR.record(fields).encoded
+    let profile = try Profile(encoding: encoded)
+    try await profile.verify(using: backend)
+    #expect(profile.encoding == encoded)
+    #expect(profile.digest == identity.profile.digest)
+  }
+}

@@ -6,7 +6,10 @@ Portable identities: keys, signed messages, device-certified profiles and proofs
 
 An identity is an identity key. The identity key certifies device keys, a certified
 device signs the identity's profile content, and any certified device signs proofs of
-data on the identity's behalf. Every record is canonical CBOR, so its bytes are its identity.
+data on the identity's behalf. Every record is a canonical CBOR map with unsigned integer keys; arrays contain lists
+only. Required keys and types are checked, and unknown integer keys are accepted.
+Signed envelopes and public keys retain extension fields when re-encoded. Tuple
+encodings are not accepted, so identities and stored profiles require fresh state.
 
 ```swift
 var identity = try await Identity(data: profileData, using: backend)

@@ -125,9 +125,9 @@ import Testing
     let alice = try await Identity(data: [], using: backend)
     let bob = try await Identity(data: [], using: backend)
     func mixed(key: Profile, devices: Profile, content: Profile) -> [UInt8] {
-      CBOR.array([
-        .text("Diem/profile"), .unsigned(3), .bytes(key.identityKey.key.encoding),
-        .array(devices.devices.map { .bytes($0.encoding) }), .bytes(content.content.encoding),
+      CBOR.map([
+        .unsigned(0): .text("Diem/profile"), .unsigned(1): .unsigned(3), .unsigned(2): .bytes(key.identityKey.key.encoding),
+        .unsigned(3): .array(devices.devices.map { .bytes($0.encoding) }), .unsigned(4): .bytes(content.content.encoding),
       ]).encoded
     }
     #expect(throws: DiemError.identityMismatch) {
