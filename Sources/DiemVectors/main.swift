@@ -56,8 +56,10 @@ for algorithm: PublicKey.Algorithm in [.mlDSA65, .ed25519, .p256] {
     "proof": proof.encoding.hex,
     "sealedIdentityKey": sealed.encoding.hex,
     "sealContext": CBOR.record([
-      0: .text("Diem/sealed-identity-key"), 1: .unsigned(3), 2: .bytes(profile.identityKey.key.encoding),
-      3: .bytes(recipient.publicKey.encoding),
+      SealedIdentityKey.cborKeyTag: .text("Diem/sealed-identity-key"),
+      SealedIdentityKey.cborKeyVersion: .unsigned(3),
+      SealedIdentityKey.cborKeyIdentityKey: .bytes(profile.identityKey.key.encoding),
+      SealedIdentityKey.cborKeyRecipient: .bytes(recipient.publicKey.encoding),
     ]).encoded.hex,
     "sealEncapsulatedKey": sealed.box.encapsulatedKey.hex,
     "sealCiphertext": sealed.box.ciphertext.hex,
