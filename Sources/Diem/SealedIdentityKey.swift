@@ -82,7 +82,7 @@ extension IdentityPrivateKey {
   public func sealed(to recipient: EncryptionPublicKey, using backend: some CryptoBackend)
     async throws -> SealedIdentityKey
   {
-    guard let secret = key.rawRepresentation else { throw DiemError.invalidKey }
+    guard let secret = rawRepresentation else { throw DiemError.invalidKey }
     let context = SealedIdentityKey.context(identityKey: publicKey, recipient: recipient)
     return SealedIdentityKey(
       identityKey: publicKey, recipient: recipient,

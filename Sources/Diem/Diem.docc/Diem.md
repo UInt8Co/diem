@@ -55,6 +55,11 @@ Swift's Unicode-aware text equality and hashing; unused table sections can be st
 
 ## Recovering on another device
 
+Applications can export a software identity's recovery secret through
+``IdentityPrivateKey/rawRepresentation`` and restore it with
+``CryptoBackend/makePrivateKey(_:for:restoring:)`` using the same algorithm and the
+identity purpose. Hardware identity keys cannot be exported or sealed.
+
 `Identity.enrolling(_:in:identityKey:profileLifetime:deviceLifetime:using:)` uses a
 recovered identity key to certify a fresh device without copying the old device's
 private key. It preserves existing devices and the signed revision chain. The caller

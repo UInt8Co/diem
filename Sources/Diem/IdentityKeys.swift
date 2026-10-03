@@ -35,6 +35,12 @@ public struct IdentityPrivateKey: Sendable {
 
   public var publicKey: IdentityPublicKey { IdentityPublicKey(unchecked: key.publicKey) }
   public var protection: KeyProtection { key.protection }
+
+  /// The exportable recovery secret of a software identity key; `nil` for hardware keys.
+  public var rawRepresentation: [UInt8]? {
+    guard key.protection == .software else { return nil }
+    return key.rawRepresentation
+  }
 }
 
 /// The public key of a device. Its ``id`` is the device's ID.

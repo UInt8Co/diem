@@ -145,6 +145,34 @@ import Testing
     }
   }
 
+  @Test(arguments: PublicKey.Algorithm.allCases)
+  func softwareIdentityRestoresFromItsRecoverySecret(algorithm: PublicKey.Algorithm) async throws {
+    let key = try await IdentityPrivateKey.generate(algorithm, using: backend)
+    let secret = try #require(key.rawRepresentation)
+    let restored = try await IdentityPrivateKey(
+      backend.makePrivateKey(algorithm, for: .identity, restoring: secret))
+    #expect(restored.publicKey == key.publicKey)
+    #expect(restored.protection == .software)
+
+    let identity = try await Identity(data: [1], identityKey: restored,
+      deviceKey: .generate(using: backend), using: backend)
+    try await identity.profile.verify(using: backend)
+    #expect(identity.profile.id == key.publicKey.id)
+  }
+
+  @Test func hardwareIdentityCannotExportOrSealARecoverySecret() async throws {
+    let software = try await backend.makePrivateKey(.p256, for: .identity)
+    // Even if a backend supplies bytes, hardware protection must prevent export.
+    let hardware = try IdentityPrivateKey(PrivateKey(publicKey: software.publicKey,
+      protection: .hardware, rawRepresentation: software.rawRepresentation,
+      sign: { _ in throw DiemError.invalidKey }))
+    #expect(hardware.rawRepresentation == nil)
+    let recipient = try await backend.makeEncryptionKey()
+    await #expect(throws: DiemError.invalidKey) {
+      try await hardware.sealed(to: recipient.publicKey, using: backend)
+    }
+  }
+
   @Test func sealedIdentityKeyOpensOnlyForItsRecipient() async throws {
     let identity = try await Identity(data: [], using: backend)
     let recipient = try await backend.makeEncryptionKey()
@@ -152,6 +180,7 @@ import Testing
     let decoded = try SealedIdentityKey(encoding: sealed.encoding)
     let opened = try await decoded.open(with: recipient, using: backend)
     #expect(opened.publicKey == identity.profile.identityKey)
+    #expect(opened.rawRepresentation == identity.identityKey!.rawRepresentation)
 
     var restored = try await Identity(
       profile: identity.profile, deviceKey: identity.deviceKey, identityKey: opened, using: backend)
