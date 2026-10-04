@@ -1,4 +1,4 @@
-// swift-tools-version: 6.3
+// swift-tools-version: 6.4
 import PackageDescription
 
 let package = Package(
@@ -19,8 +19,8 @@ let package = Package(
     .executable(name: "diem-vectors", targets: ["DiemVectors"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/apple/swift-crypto.git", from: "4.2.0"),
-    .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
+    .package(url: "https://github.com/apple/swift-crypto.git", from: "5.0.0"),
+    .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.5.0"),
   ],
   targets: [
     .target(name: "Diem"),

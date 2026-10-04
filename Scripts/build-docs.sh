@@ -10,6 +10,13 @@ TARGETS=(
   DiemSwiftCrypto
 )
 
+# Swift 6.4's experimental HTML-content renderer crashes in FoundationXML on
+# Linux. Static routing is supported there; macOS can also prerender page content.
+STATIC_HOSTING=--experimental-transform-for-static-hosting-with-content
+if [[ "$(uname -s)" == Linux ]]; then
+  STATIC_HOSTING=--transform-for-static-hosting
+fi
+
 rm -rf ./dist
 mkdir -p ./dist
 
@@ -19,9 +26,9 @@ swift package \
   generate-documentation \
   $(for target in "${TARGETS[@]}"; do echo --target "$target"; done) \
   --output-path "./dist" \
-  --experimental-transform-for-static-hosting-with-content \
+  "$STATIC_HOSTING" \
   --enable-experimental-overloaded-symbol-presentation \
-  --enable-experimental-combined-documentation\
+  --enable-experimental-combined-documentation \
   --enable-experimental-code-block-annotations \
   --checkout-path . \
   --source-service github \
