@@ -1,4 +1,4 @@
-// Independent WebCrypto verifier for the committed Diem v3 wire vectors.
+// Independent WebCrypto verifier for the committed Diem v4 wire vectors.
 // deno run --allow-read Scripts/verify-vectors.ts
 function assert(condition: unknown): asserts condition {
   if (!condition) throw new Error("Vector assertion failed");
@@ -69,9 +69,9 @@ function record(v: Value, required: number): Record<number, Value> {
   return fields;
 }
 function bytes(v: Value): Uint8Array { assert(v instanceof Uint8Array); return v; }
-function tagged(encoded: Uint8Array, tag: string, length: number) {
+function tagged(encoded: Uint8Array, tag: string, length: number, version = 3n) {
   const a = record(decode(encoded), length);
-  assert(a[0] === tag && a[1] === 3n);
+  assert(a[0] === tag && a[1] === version);
   return a;
 }
 // Integer-keyed signing records: purpose 1 is identity, 2 is device.
@@ -98,8 +98,8 @@ async function verifySigned(encodedKey: Uint8Array, purpose: bigint, message: Ui
   assert(!await verify(encodedKey, purpose, tampered, signature));
 }
 
-const fixture = JSON.parse(await Deno.readTextFile(new URL("../Tests/Vectors/diem-v3.json", import.meta.url)));
-assert(fixture.protocol === "Diem/v3");
+const fixture = JSON.parse(await Deno.readTextFile(new URL("../Tests/Vectors/diem-v4.json", import.meta.url)));
+assert(fixture.protocol === "Diem/v4");
 for (const v of fixture.vectors) {
   const identityKey = hex(v.identityKey), deviceKey = hex(v.deviceKey);
   const identityID = hex(v.identityID), deviceID = hex(v.deviceID);
@@ -116,9 +116,12 @@ for (const v of fixture.vectors) {
   const content = hex(v.contentMessage);
   await verifySigned(deviceKey, 2n, content, hex(v.contentSignature));
   assert(!await verify(identityKey, 1n, content, hex(v.contentSignature)));
-  const p = tagged(content, "Diem/profile-content", 10);
+  const p = tagged(content, "Diem/profile-content", 10, 4n);
   assert(equal(bytes(p[2]), identityID) && p[3] === 1n && equal(bytes(p[4]), deviceID) && p[5] === 1n);
-  const profile = tagged(hex(v.profile), "Diem/profile", 5);
+  // Domains are Diem's; application fields start at key 16.
+  assert(Array.isArray(p[9]) && p[9].length === 1 && p[9][0] === "vectors.example");
+  assert(equal(bytes(p[16]), new TextEncoder().encode("cross-language profile")));
+  const profile = tagged(hex(v.profile), "Diem/profile", 5, 4n);
   assert(equal(bytes(profile[2]), identityKey));
 
   const proof = hex(v.proofMessage);
@@ -135,4 +138,4 @@ for (const v of fixture.vectors) {
 for (const malformed of ["a200010002", "1800", "0000", "9fff"]) {
   assertThrows(() => decode(hex(malformed)));
 }
-console.log(`Verified ${fixture.vectors.length} Diem v3 vectors with WebCrypto.`);
+console.log(`Verified ${fixture.vectors.length} Diem v4 vectors with WebCrypto.`);

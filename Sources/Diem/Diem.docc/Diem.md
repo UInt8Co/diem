@@ -13,11 +13,31 @@ Signed envelopes and public keys retain extension fields when re-encoded. Tuple
 encodings are not accepted, so identities and stored profiles require fresh state.
 
 ```swift
-var identity = try await Identity(data: profileData, using: backend)
+var identity = try await BasicIdentity<ProfileRecord>(
+  ProfileFields(domains: [DomainName("alice.example")]), using: backend)
 try await identity.add(laptop.publicKey)
 let proof = try await identity.prove(challenge)
 try await proof.verify(against: identity.profile, using: backend)
 ```
+
+### Profiles, identities and proofs
+
+``Profile``, ``Identity`` and ``Proof`` are protocols. A profile is a signed
+``ProfileRecord`` and the application ``Profile/Content`` decoded from it; the
+application chooses the ``ProfileFields`` that publish new content. Those fields are
+signed directly in the profile content: Diem keeps content keys below
+``ProfileFields/firstApplicationKey`` and the application owns the rest, so application
+profiles need no nested record of their own. ``ProfileRecord`` and ``ProofRecord`` are
+the default profile and proof, with uninterpreted fields and data.
+
+Every profile signs the ``DomainName`` list that serves it. A ``DomainNamedProfile``
+states how many domains its kind lists, and a verifier that fetched a profile from a
+domain checks that the profile serves that domain. Domains are lowercase DNS names;
+callers fold user input with `DomainName(normalizing:)`.
+
+An ``Identity`` supplies a device's keys and current profile. Its operations sign and
+return the next revision without storing it, so storage-backed identities adopt a
+revision only once it is durable. ``BasicIdentity`` adopts each revision it publishes.
 
 ### Keys
 
@@ -60,7 +80,7 @@ Applications can export a software identity's recovery secret through
 ``CryptoBackend/makePrivateKey(_:for:restoring:)`` using the same algorithm and the
 identity purpose. Hardware identity keys cannot be exported or sealed.
 
-`Identity.enrolling(_:in:identityKey:profileLifetime:deviceLifetime:using:)` uses a
+`Profile.enrolling(_:identityKey:profileLifetime:deviceLifetime:using:)` uses a
 recovered identity key to certify a fresh device without copying the old device's
 private key. It preserves existing devices and the signed revision chain. The caller
 must obtain the latest trusted profile and enforce its saved version floor before
@@ -73,9 +93,15 @@ custody policy, separate from device-key synchronization.
 ### Identities
 
 - ``Identity``
+- ``BasicIdentity``
 - ``Profile``
+- ``ProfileRecord``
+- ``ProfileFields``
+- ``DomainNamedProfile``
+- ``DomainName``
 - ``DeviceCertificate``
 - ``Proof``
+- ``ProofRecord``
 
 ### Identity and device keys
 

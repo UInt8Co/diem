@@ -1,7 +1,7 @@
 // Opens the committed sealed identity keys with the independent Java P-256 HPKE receiver.
 // Needs a Java 17+ JDK. deno run --allow-read --allow-run --allow-write Scripts/verify-hpke-vectors.ts
 const root = new URL("..", import.meta.url).pathname;
-const fixture = JSON.parse(await Deno.readTextFile(`${root}/Tests/Vectors/diem-v3.json`));
+const fixture = JSON.parse(await Deno.readTextFile(`${root}/Tests/Vectors/diem-v4.json`));
 const classes = await Deno.makeTempDir({ prefix: "diem-hpke-" });
 try {
   const compile = await new Deno.Command("javac", { args: ["-d", classes,

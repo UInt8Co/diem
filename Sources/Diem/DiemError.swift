@@ -12,6 +12,8 @@ public enum DiemError: Error, Sendable, Equatable {
   case invalidValidity
   /// The time is outside a record's validity period.
   case expired
+  /// A name is not a lowercase DNS domain, or a profile's domains break its rules.
+  case invalidDomain
   /// Records name different identities, devices or keys.
   case identityMismatch
   /// The device is not certified in the profile.

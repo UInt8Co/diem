@@ -32,9 +32,10 @@ for algorithm: PublicKey.Algorithm in [.mlDSA65, .ed25519, .p256] {
   let root = try await backend.makePrivateKey(algorithm, for: .identity)
   let identityKey = try IdentityPrivateKey(root)
   let deviceKey = try await DevicePrivateKey.generate(algorithm, using: backend)
-  let identity = try await Identity(
-    data: Array("cross-language profile".utf8), identityKey: identityKey, deviceKey: deviceKey,
-    using: backend)
+  let identity = try await BasicIdentity<ProfileRecord>(
+    ProfileFields(domains: [DomainName("vectors.example")],
+      application: [ProfileFields.firstApplicationKey: .bytes(Array("cross-language profile".utf8))]),
+    identityKey: identityKey, deviceKey: deviceKey, using: backend)
   let profile = identity.profile
   let proof = try await identity.prove(Array("cross-language proof".utf8))
   // Software-only fixture key, deliberately published. Never a device credential.
@@ -48,8 +49,8 @@ for algorithm: PublicKey.Algorithm in [.mlDSA65, .ed25519, .p256] {
     "deviceID": deviceKey.publicKey.id.bytes.hex,
     "certificateMessage": profile.devices[0].signedMessage.message.hex,
     "certificateSignature": profile.devices[0].signedMessage.signature.hex,
-    "contentMessage": profile.content.message.hex,
-    "contentSignature": profile.content.signature.hex,
+    "contentMessage": profile.signedContent.message.hex,
+    "contentSignature": profile.signedContent.signature.hex,
     "profile": profile.encoding.hex,
     "proofMessage": proof.signedMessage.message.hex,
     "proofSignature": proof.signedMessage.signature.hex,
@@ -69,6 +70,6 @@ for algorithm: PublicKey.Algorithm in [.mlDSA65, .ed25519, .p256] {
   ])
 }
 let json = try JSONSerialization.data(
-  withJSONObject: ["protocol": "Diem/v3", "now": backend.now, "vectors": vectors],
+  withJSONObject: ["protocol": "Diem/v4", "now": backend.now, "vectors": vectors],
   options: [.prettyPrinted, .sortedKeys])
 print(String(decoding: json, as: UTF8.self))

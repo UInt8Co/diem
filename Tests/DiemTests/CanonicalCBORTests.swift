@@ -89,11 +89,11 @@ import Testing
 
   @Test func profileExtensionsKeepSignedContentVerifiable() async throws {
     let backend = TestBackend()
-    let identity = try await Identity(data: [], using: backend)
+    let identity = try await TestIdentity(.data([]), using: backend)
     var fields = try CBOR(decoding: identity.profile.encoding).recordValue(requiredKeys: 0..<5)
     fields[100] = .text("future")
     let encoded = CBOR.record(fields).encoded
-    let profile = try Profile(encoding: encoded)
+    let profile = try ProfileRecord(encoding: encoded)
     try await profile.verify(using: backend)
     #expect(profile.encoding == encoded)
     #expect(profile.digest == identity.profile.digest)
