@@ -88,6 +88,22 @@ recovery, then retain and publish the new revision. Hardware device keys remain 
 the device that created them; optional identity-key synchronization is application
 custody policy, separate from device-key synchronization.
 
+## Paper device keys
+
+A ``PaperDeviceKey`` is a software device key written down as 24 BIP 39 English words.
+The words carry 256 bits of entropy and a checksum. Each algorithm's device seed is
+HKDF-SHA256 of that entropy under a canonical derivation context, so the words are not a
+BIP 39 wallet seed. The identity key certifies the paper's public key like any other
+device, and removing it works the same way. Renewal with the identity key keeps it
+certified; if nothing renews it, it expires with its certificate.
+
+To use the paper, decode the words and fetch the identity's current profile.
+`deviceKey(listedIn:using:)` derives a key only for the algorithms that profile lists and
+returns the one it certifies. Like every device key, the paper signs proofs and profile
+content but cannot certify devices or recover the identity key. Ed25519 and ML-DSA-65
+papers are supported; P-256 belongs in hardware. `Tests/Vectors/paper-device-key.json`
+holds cross-language vectors.
+
 ## Topics
 
 ### Identities
@@ -109,6 +125,7 @@ custody policy, separate from device-key synchronization.
 - ``IdentityPrivateKey``
 - ``DevicePublicKey``
 - ``DevicePrivateKey``
+- ``PaperDeviceKey``
 - ``SealedIdentityKey``
 
 ### Cryptographic primitives
