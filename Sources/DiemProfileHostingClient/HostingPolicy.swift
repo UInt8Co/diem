@@ -28,13 +28,10 @@ public struct HostingPolicy: Sendable, Equatable {
     referenceLength = try pow.field("referenceLength").integer()
   }
 
-  /// Nil means overflow or a requirement outside 0...64. Arithmetic matches a 64-bit host.
+  /// Nil means overflow or a requirement outside 0...64.
   public func requiredBits(for label: String) -> Int? {
-    let (shortfall, underflow) = referenceLength.subtractingReportingOverflow(Int64(label.utf8.count))
-    let (extra, overflow) = bitsPerShorterCharacter.multipliedReportingOverflow(by: max(0, shortfall))
-    let (bits, additionOverflow) = baseBits.addingReportingOverflow(extra)
-    guard !underflow, !overflow, !additionOverflow, (0...64).contains(bits) else { return nil }
-    return Int(bits)
+    ProofOfWorkPuzzle.requiredBits(for: label, baseBits: baseBits,
+      bitsPerShorterCharacter: bitsPerShorterCharacter, referenceLength: referenceLength)
   }
 }
 

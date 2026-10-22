@@ -26,6 +26,19 @@ public struct ProofOfWorkPuzzle: Sendable, Equatable {
     (0..<requiredBits).reduce(1.0) { value, _ in value * 2 }
   }
 
+  /// `baseBits + bitsPerShorterCharacter × max(0, referenceLength − label.utf8.count)` in
+  /// signed 64-bit arithmetic on every platform, as hosts compute it. Nil means overflow or
+  /// a requirement outside 0...64.
+  public static func requiredBits(for label: String, baseBits: Int64,
+    bitsPerShorterCharacter: Int64, referenceLength: Int64
+  ) -> Int? {
+    let (shortfall, underflow) = referenceLength.subtractingReportingOverflow(Int64(label.utf8.count))
+    let (extra, overflow) = bitsPerShorterCharacter.multipliedReportingOverflow(by: max(0, shortfall))
+    let (bits, additionOverflow) = baseBits.addingReportingOverflow(extra)
+    guard !underflow, !overflow, !additionOverflow, (0...64).contains(bits) else { return nil }
+    return Int(bits)
+  }
+
   public func isSolved(by nonce: [UInt8]) -> Bool {
     guard (1...64).contains(nonce.count) else { return false }
     if requiredBits == 0 { return true }
