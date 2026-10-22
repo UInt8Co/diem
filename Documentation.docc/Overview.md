@@ -10,3 +10,4 @@ Portable identities built from keys, signed messages, device-certified profiles 
 
 - `/Diem`
 - `/DiemSwiftCrypto`
+- `/DiemProfileHostingClient`

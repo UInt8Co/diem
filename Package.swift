@@ -13,6 +13,8 @@ let package = Package(
   products: [
     // Foundation-free CBOR, keys, signed messages, identities, profiles and proofs.
     .library(name: "Diem", targets: ["Diem"]),
+    // Foundation-free profile hosting, HTTP transport and proof-of-work interfaces.
+    .library(name: "DiemProfileHostingClient", targets: ["DiemProfileHostingClient"]),
     // A CryptoBackend on Swift Crypto, with Secure Enclave keys on Apple platforms.
     .library(name: "DiemSwiftCrypto", targets: ["DiemSwiftCrypto"]),
     // Writes cross-language wire vectors.
@@ -24,12 +26,15 @@ let package = Package(
   ],
   targets: [
     .target(name: "Diem"),
+    .target(name: "DiemProfileHostingClient", dependencies: ["Diem"]),
     .target(
       name: "DiemSwiftCrypto",
       dependencies: ["Diem", .product(name: "Crypto", package: "swift-crypto")]
     ),
     .executableTarget(name: "DiemVectors", dependencies: ["DiemSwiftCrypto"]),
     .testTarget(name: "DiemTests", dependencies: ["DiemSwiftCrypto"]),
+    .testTarget(name: "DiemProfileHostingClientTests",
+      dependencies: ["DiemProfileHostingClient", "DiemSwiftCrypto"]),
   ],
   swiftLanguageModes: [.v6]
 )

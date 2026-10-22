@@ -8,6 +8,7 @@ set -euo pipefail
 TARGETS=(
   Diem
   DiemSwiftCrypto
+  DiemProfileHostingClient
 )
 
 # Swift 6.4's experimental HTML-content renderer crashes in FoundationXML on
