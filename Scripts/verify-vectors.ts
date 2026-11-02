@@ -130,17 +130,14 @@ for (const v of fixture.vectors) {
   assert(equal(bytes(q[2]), identityID) && equal(bytes(q[3]), deviceID));
   assert(equal(bytes(q[4]), new TextEncoder().encode("cross-language proof")));
 
-  const s = tagged(hex(v.sealedIdentityKey), "Diem/sealed-identity-key", 6);
-  assert(equal(bytes(s[2]), identityKey));
-  const recipient = record(decode(bytes(s[3])), 5);
-  assert(recipient[0] === "Diem/key" && recipient[1] === 3n && recipient[2] === 3n);
+
 }
 for (const malformed of ["a200010002", "1800", "0000", "9fff"]) {
   assertThrows(() => decode(hex(malformed)));
 }
 console.log(`Verified ${fixture.vectors.length} Diem v4 vectors with WebCrypto.`);
 
-// Paper device keys: BIP 39 English words over the entropy, HKDF-SHA256 seeds per algorithm.
+// Identity seeds: BIP 39 English words over the entropy, HKDF-SHA256 seeds per algorithm.
 const words = (await Deno.readTextFile(new URL("../Sources/Diem/PaperWords.swift", import.meta.url)))
   .split('"""')[1].trim().split(/\s+/);
 const wordlist = new TextEncoder().encode(words.join("\n") + "\n");
@@ -150,20 +147,20 @@ async function phrase(entropy: Uint8Array) {
   const bits = Array.from([...entropy, (await hash(entropy))[0]], b => b.toString(2).padStart(8, "0")).join("");
   return Array.from({ length: 24 }, (_, i) => words[parseInt(bits.slice(i * 11, i * 11 + 11), 2)]).join(" ");
 }
-const paper = JSON.parse(await Deno.readTextFile(new URL("../Tests/Vectors/paper-device-key.json", import.meta.url)));
-assert(paper.protocol === "Diem/paper-device-key/1");
-for (const v of paper.vectors) {
+const seeds = JSON.parse(await Deno.readTextFile(new URL("../Tests/Vectors/identity-seed.json", import.meta.url)));
+assert(seeds.protocol === "Diem/identity-seed/1");
+for (const v of seeds.vectors) {
   const entropy = hex(v.entropy);
   assert(await phrase(entropy) === v.phrase);
   const ikm = await crypto.subtle.importKey("raw", new Uint8Array(entropy), "HKDF", false, ["deriveBits"]);
   for (const code of [1n, 5n]) {
     const context = record(decode(hex(v.context[`${code}`])), 4);
-    assert(context[0] === "Diem/paper-device-key" && context[1] === 1n && context[2] === 2n && context[3] === code);
+    assert(context[0] === "Diem/identity-seed" && context[1] === 1n && context[2] === 1n && context[3] === code);
     const seed = new Uint8Array(await crypto.subtle.deriveBits(
       { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(), info: new Uint8Array(hex(v.context[`${code}`])) }, ikm, 256));
     assert(equal(seed, hex(v.seed[`${code}`])));
-    const deviceKey = hex(v.deviceKey[`${code}`]);
-    const { raw } = signingKey(deviceKey, 2n);
+    const identityKey = hex(v.identityKey[`${code}`]);
+    const { raw } = signingKey(identityKey, 1n);
     if (code === 1n) {
       const pkcs8 = new Uint8Array([0x30, 0x2e, 2, 1, 0, 0x30, 5, 6, 3, 0x2b, 0x65, 0x70, 4, 0x22, 4, 0x20, ...seed]);
       const key = await crypto.subtle.importKey("pkcs8", pkcs8, "Ed25519", true, ["sign"]);
@@ -172,10 +169,10 @@ for (const v of paper.vectors) {
     } else {
       // WebCrypto cannot export an ML-DSA public key from its seed; sign and verify instead.
       const key = await crypto.subtle.importKey("raw-seed" as "raw", seed, { name: "ML-DSA-65" }, false, ["sign"]);
-      const message = new TextEncoder().encode("paper device key");
-      await verifySigned(deviceKey, 2n, message,
+      const message = new TextEncoder().encode("identity seed");
+      await verifySigned(identityKey, 1n, message,
         new Uint8Array(await crypto.subtle.sign({ name: "ML-DSA-65" }, key, message)));
     }
   }
 }
-console.log(`Verified ${paper.vectors.length} paper device key vectors with WebCrypto.`);
+console.log(`Verified ${seeds.vectors.length} identity seed vectors with WebCrypto.`);

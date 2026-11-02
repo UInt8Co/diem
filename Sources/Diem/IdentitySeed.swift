@@ -1,13 +1,8 @@
-/// A software device key written down as 24 words, so a sheet of paper can be one of an
-/// identity's devices.
+/// An identity root encoded as 24 BIP 39 English recovery words.
 ///
-/// The words are the BIP 39 English encoding of 256 bits of entropy, whose checksum catches
-/// a mistyped word. The key is not BIP 39's wallet seed: its seed for an algorithm is
-/// HKDF-SHA256 of the entropy with an empty salt and the canonical derivation context as
-/// info. An identity certifies the derived public key like any other device, so the paper
-/// proves wherever its profile lists it and is removed the same way. Like every device
-/// key, it cannot certify devices or recover the identity key.
-public struct PaperDeviceKey: Sendable {
+/// The words encode 256 bits of entropy and a checksum, not a BIP 39 wallet seed.
+/// Identity signing seeds use HKDF-SHA256 with an algorithm-qualified identity context.
+public struct IdentitySeed: Sendable {
   /// CBOR field keys of the derivation context.
   public static let cborKeyTag: UInt64 = 0
   public static let cborKeyVersion: UInt64 = 1
@@ -19,13 +14,13 @@ public struct PaperDeviceKey: Sendable {
   /// The 32 bytes of entropy the words encode.
   public let entropy: [UInt8]
 
-  /// The paper key that encodes 32 bytes of `entropy`.
+  /// The identity seed that encodes 32 bytes of `entropy`.
   public init(entropy: [UInt8]) throws(DiemError) {
     guard entropy.count == 32 else { throw .invalidKey }
     self.entropy = entropy
   }
 
-  /// A new paper key from the backend's random bytes.
+  /// A new identity seed from the backend's random bytes.
   public static func generate(using backend: some CryptoBackend) throws(DiemError) -> Self {
     try Self(entropy: backend.randomBytes(count: 32))
   }
@@ -79,16 +74,16 @@ public struct PaperDeviceKey: Sendable {
   /// The words separated by single spaces.
   public var phrase: String { words.joined(separator: " ") }
 
-  /// The device key seed for `algorithm`. Ed25519 and ML-DSA-65 take the 32 derived bytes;
-  /// P-256 keys belong in hardware and throw ``DiemError/unsupportedAlgorithm``.
-  public func seed(for algorithm: PublicKey.Algorithm) throws(DiemError) -> [UInt8] {
+  /// The identity key seed for `algorithm`. Ed25519 and ML-DSA-65 take the 32 derived bytes;
+  /// P-256 throws ``DiemError/unsupportedAlgorithm``.
+  func seed(for algorithm: PublicKey.Algorithm) throws(DiemError) -> [UInt8] {
     switch algorithm {
     case .ed25519, .mlDSA65: break
     case .p256: throw .unsupportedAlgorithm
     }
     let context = CBOR.record([
-      Self.cborKeyTag: .text("Diem/paper-device-key"), Self.cborKeyVersion: .unsigned(1),
-      Self.cborKeyPurpose: .unsigned(PublicKey.Purpose.device.rawValue),
+      Self.cborKeyTag: .text("Diem/identity-seed"), Self.cborKeyVersion: .unsigned(1),
+      Self.cborKeyPurpose: .unsigned(PublicKey.Purpose.identity.rawValue),
       Self.cborKeyAlgorithm: .unsigned(algorithm.rawValue),
     ]).encoded
     // HKDF-SHA256 (RFC 5869) with an empty salt, for one 32-byte block.
@@ -96,28 +91,21 @@ public struct PaperDeviceKey: Sendable {
     return Self.hmac(key: pseudorandomKey, context + [1])
   }
 
-  /// The paper's device key for `algorithm`, ML-DSA-65 by default.
-  public func deviceKey(
-    _ algorithm: PublicKey.Algorithm = .mlDSA65, using backend: some CryptoBackend
-  ) async throws -> DevicePrivateKey {
-    try DevicePrivateKey(
-      await backend.makePrivateKey(algorithm, for: .device, restoring: seed(for: algorithm)))
+  /// Derives the identity key for `algorithm`.
+  public func identityKey(
+    _ algorithm: PublicKey.Algorithm, using backend: some CryptoBackend
+  ) async throws -> IdentityPrivateKey {
+    try IdentityPrivateKey(
+      await backend.makePrivateKey(algorithm, for: .identity, restoring: seed(for: algorithm)))
   }
 
-  /// The paper's device key that `profile` certifies, whichever algorithm it uses. A
-  /// profile that lists none of the paper's keys throws ``DiemError/deviceNotListed``.
-  public func deviceKey(listedIn profile: some Profile, using backend: some CryptoBackend)
-    async throws -> DevicePrivateKey
+  /// Derives and checks the identity key against `identity`.
+  public func identityKey(matching identity: IdentityPublicKey, using backend: some CryptoBackend)
+    async throws -> IdentityPrivateKey
   {
-    var tried: [PublicKey.Algorithm] = []
-    for certificate in profile.devices {
-      let algorithm = certificate.device.key.algorithm
-      guard algorithm != .p256, !tried.contains(algorithm) else { continue }
-      tried.append(algorithm)
-      let key = try await deviceKey(algorithm, using: backend)
-      if profile.devices.contains(where: { $0.device == key.publicKey }) { return key }
-    }
-    throw DiemError.deviceNotListed
+    let key = try await identityKey(identity.key.algorithm, using: backend)
+    guard key.publicKey == identity else { throw DiemError.identityMismatch }
+    return key
   }
 
   /// Lowercase ASCII words of `phrase`, split at whitespace.

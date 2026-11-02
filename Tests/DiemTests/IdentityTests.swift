@@ -160,36 +160,14 @@ import Testing
     #expect(identity.profile.id == key.publicKey.id)
   }
 
-  @Test func hardwareIdentityCannotExportOrSealARecoverySecret() async throws {
+  @Test(arguments: [KeyProtection.hardware, .nonExportable])
+  func protectedKeysCannotExport(protection: KeyProtection) async throws {
     let software = try await backend.makePrivateKey(.p256, for: .identity)
-    // Even if a backend supplies bytes, hardware protection must prevent export.
-    let hardware = try IdentityPrivateKey(PrivateKey(publicKey: software.publicKey,
-      protection: .hardware, rawRepresentation: software.rawRepresentation,
-      sign: { _ in throw DiemError.invalidKey }))
-    #expect(hardware.rawRepresentation == nil)
-    let recipient = try await backend.makeEncryptionKey()
-    await #expect(throws: DiemError.invalidKey) {
-      try await hardware.sealed(to: recipient.publicKey, using: backend)
-    }
-  }
-
-  @Test func sealedIdentityKeyOpensOnlyForItsRecipient() async throws {
-    let identity = try await TestIdentity(.data([]), using: backend)
-    let recipient = try await backend.makeEncryptionKey()
-    let sealed = try await identity.identityKey!.sealed(to: recipient.publicKey, using: backend)
-    let decoded = try SealedIdentityKey(encoding: sealed.encoding)
-    let opened = try await decoded.open(with: recipient, using: backend)
-    #expect(opened.publicKey == identity.profile.identityKey)
-    #expect(opened.rawRepresentation == identity.identityKey!.rawRepresentation)
-
-    var restored = try await TestIdentity(
-      profile: identity.profile, deviceKey: identity.deviceKey, identityKey: opened, using: backend)
-    try await restored.renew().verify(using: backend)
-
-    let other = try await backend.makeEncryptionKey()
-    await #expect(throws: DiemError.identityMismatch) {
-      try await decoded.open(with: other, using: backend)
-    }
+    let protected = PrivateKey(publicKey: software.publicKey,
+      protection: protection, rawRepresentation: software.rawRepresentation,
+      sign: { _ in throw DiemError.invalidKey })
+    #expect(protected.rawRepresentation == nil)
+    #expect(try IdentityPrivateKey(protected).rawRepresentation == nil)
   }
 
   @Test func identityKeyMaterialNeverActsAsADevice() async throws {
@@ -207,7 +185,7 @@ import Testing
 
   @Test func committedVectorsDecodeAndVerify() async throws {
     struct Fixture: Decodable {
-      struct Vector: Decodable { let profile, proof, sealedIdentityKey, identityID: String }
+      struct Vector: Decodable { let profile, proof, identityID: String }
       let now: UInt64
       let vectors: [Vector]
     }
@@ -230,8 +208,7 @@ import Testing
       try await profile.verify(using: backend, at: fixture.now)
       try await ProofRecord(encoding: bytes(vector.proof)).verify(
         against: profile, using: backend, at: fixture.now)
-      #expect(try SealedIdentityKey(encoding: bytes(vector.sealedIdentityKey)).identityKey
-        == profile.identityKey)
+
     }
   }
 }

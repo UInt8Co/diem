@@ -104,7 +104,7 @@ extension Profile {
     let validity = try Validity(starting: backend.now, lifetime: deviceLifetime)
     let contentValidity = try Validity(starting: backend.now, lifetime: profileLifetime)
     guard contentValidity.expiresAt <= validity.expiresAt else { throw DiemError.invalidValidity }
-    let keys = devices.map(\.device).filter { $0 != device.publicKey } + [device.publicKey]
+    let keys = devices.map { $0.device }.filter { $0 != device.publicKey } + [device.publicKey]
     var certificates: [DeviceCertificate] = []
     for key in keys {
       certificates.append(try await DeviceCertificate.issue(

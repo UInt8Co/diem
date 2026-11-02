@@ -36,7 +36,7 @@ public struct IdentityPrivateKey: Sendable {
   public var publicKey: IdentityPublicKey { IdentityPublicKey(unchecked: key.publicKey) }
   public var protection: KeyProtection { key.protection }
 
-  /// The exportable recovery secret of a software identity key; `nil` for hardware keys.
+  /// The exportable recovery secret of a software identity key; `nil` for non-exportable and hardware keys.
   public var rawRepresentation: [UInt8]? {
     guard key.protection == .software else { return nil }
     return key.rawRepresentation
@@ -80,6 +80,6 @@ public struct DevicePrivateKey: Sendable {
 
   public var publicKey: DevicePublicKey { DevicePublicKey(unchecked: key.publicKey) }
   public var protection: KeyProtection { key.protection }
-  /// The exportable secret of a software key; `nil` for hardware keys.
+  /// The exportable secret of a software key; `nil` for non-exportable and hardware keys.
   public var rawRepresentation: [UInt8]? { key.rawRepresentation }
 }

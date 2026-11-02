@@ -13,7 +13,7 @@ purpose is unavailable. Read the protection level of **both** keys, and report s
 keys as software. Keys that require per-operation authentication are used through the
 application's biometric authorization flow.
 
-`Scripts/verify-hpke-vectors.ts` opens Swift-sealed identity keys with this receiver and
+`Scripts/verify-hpke-vectors.ts` opens Swift-sealed identity seeds with this receiver and
 checks that it rejects context and key substitution. It needs a Java 17+ JDK and Deno, and
 exercises JCA software. The instrumentation test covers real TEE/StrongBox devices.
 

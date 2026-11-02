@@ -1,5 +1,5 @@
-/// An identity private key encrypted to one encryption key, for storage or transfer.
-public struct SealedIdentityKey: Hashable, Sendable {
+/// An identity seed encrypted to one encryption key, for storage or transfer.
+public struct SealedIdentitySeed: Hashable, Sendable {
   /// CBOR field keys.
   public static let cborKeyTag: UInt64 = 0
   public static let cborKeyVersion: UInt64 = 1
@@ -15,12 +15,12 @@ public struct SealedIdentityKey: Hashable, Sendable {
   public let recipient: EncryptionPublicKey
   public let box: SealedBox
 
-  /// Decodes a sealed key from its ``encoding``.
+  /// Decodes a sealed seed from its ``encoding``.
   public init(encoding: [UInt8]) throws(DiemError) {
     let a = try CBOR(decoding: encoding).recordValue(
       requiredKeys: Self.cborKeyTag..<(Self.cborKeyCiphertext + 1))
-    guard a[Self.cborKeyTag]! == .text("Diem/sealed-identity-key"),
-      a[Self.cborKeyVersion]! == .unsigned(3)
+    guard a[Self.cborKeyTag]! == .text("Diem/sealed-identity-seed"),
+      a[Self.cborKeyVersion]! == .unsigned(1)
     else {
       throw .invalidEncoding
     }
@@ -37,7 +37,7 @@ public struct SealedIdentityKey: Hashable, Sendable {
   public var encoding: [UInt8] {
     CBOR.record(
       [
-        Self.cborKeyTag: .text("Diem/sealed-identity-key"), Self.cborKeyVersion: .unsigned(3),
+        Self.cborKeyTag: .text("Diem/sealed-identity-seed"), Self.cborKeyVersion: .unsigned(1),
         Self.cborKeyIdentityKey: .bytes(identityKey.key.encoding),
         Self.cborKeyRecipient: .bytes(recipient.encoding),
         Self.cborKeyEncapsulatedKey: .bytes(box.encapsulatedKey),
@@ -46,17 +46,20 @@ public struct SealedIdentityKey: Hashable, Sendable {
     ).encoded
   }
 
-  /// The identity private key, decrypted with the recipient's `key`.
+  /// The identity seed, decrypted with the recipient's `key`.
   public func open(with key: EncryptionPrivateKey, using backend: some CryptoBackend) async throws
-    -> IdentityPrivateKey
+    -> IdentitySeed
   {
     guard key.publicKey == recipient else { throw DiemError.identityMismatch }
     let secret = try await key.open(
       box, context: Self.context(identityKey: identityKey, recipient: recipient))
-    let restored = try await backend.makePrivateKey(
-      identityKey.key.algorithm, for: .identity, restoring: secret)
-    guard restored.publicKey == identityKey.key else { throw DiemError.decryptionFailed }
-    return try IdentityPrivateKey(restored)
+    do {
+      let seed = try IdentitySeed(entropy: secret)
+      _ = try await seed.identityKey(matching: identityKey, using: backend)
+      return seed
+    } catch {
+      throw DiemError.decryptionFailed
+    }
   }
 
   fileprivate init(identityKey: IdentityPublicKey, recipient: EncryptionPublicKey, box: SealedBox) {
@@ -69,23 +72,22 @@ public struct SealedIdentityKey: Hashable, Sendable {
     -> [UInt8]
   {
     CBOR.record([
-      Self.cborKeyTag: .text("Diem/sealed-identity-key"), Self.cborKeyVersion: .unsigned(3),
+      Self.cborKeyTag: .text("Diem/sealed-identity-seed"), Self.cborKeyVersion: .unsigned(1),
       Self.cborKeyIdentityKey: .bytes(identityKey.key.encoding),
       Self.cborKeyRecipient: .bytes(recipient.encoding),
     ]).encoded
   }
 }
 
-extension IdentityPrivateKey {
-  /// This key encrypted to `recipient`. Only software keys can be sealed; a hardware key
-  /// throws ``DiemError/invalidKey``.
-  public func sealed(to recipient: EncryptionPublicKey, using backend: some CryptoBackend)
-    async throws -> SealedIdentityKey
-  {
-    guard let secret = rawRepresentation else { throw DiemError.invalidKey }
-    let context = SealedIdentityKey.context(identityKey: publicKey, recipient: recipient)
-    return SealedIdentityKey(
-      identityKey: publicKey, recipient: recipient,
-      box: try await backend.seal(secret, to: recipient, context: context))
+extension IdentitySeed {
+  /// This seed encrypted to `recipient`, bound to its derived identity.
+  public func sealed(
+    to recipient: EncryptionPublicKey, identity: IdentityPublicKey, using backend: some CryptoBackend
+  ) async throws -> SealedIdentitySeed {
+    _ = try await identityKey(matching: identity, using: backend)
+    let context = SealedIdentitySeed.context(identityKey: identity, recipient: recipient)
+    return SealedIdentitySeed(
+      identityKey: identity, recipient: recipient,
+      box: try await backend.seal(entropy, to: recipient, context: context))
   }
 }

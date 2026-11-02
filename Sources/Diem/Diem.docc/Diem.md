@@ -75,34 +75,29 @@ Swift's Unicode-aware text equality and hashing; unused table sections can be st
 
 ## Recovering on another device
 
-Applications can export a software identity's recovery secret through
-``IdentityPrivateKey/rawRepresentation`` and restore it with
-``CryptoBackend/makePrivateKey(_:for:restoring:)`` using the same algorithm and the
-identity purpose. Hardware identity keys cannot be exported or sealed.
+An ``IdentitySeed`` is the identity root. Its 24 BIP 39 English recovery words encode
+32 bytes of entropy and a checksum. Parsing ignores ASCII case and whitespace and
+rejects an incorrect word count, unknown words or a failed checksum.
 
-`Profile.enrolling(_:identityKey:profileLifetime:deviceLifetime:using:)` uses a
-recovered identity key to certify a fresh device without copying the old device's
-private key. It preserves existing devices and the signed revision chain. The caller
-must obtain the latest trusted profile and enforce its saved version floor before
-recovery, then retain and publish the new revision. Hardware device keys remain on
-the device that created them; optional identity-key synchronization is application
-custody policy, separate from device-key synchronization.
+`identityKey(_:using:)` derives an Ed25519 or ML-DSA-65 identity key with HKDF-SHA256,
+an empty salt, and canonical CBOR info `{0:"Diem/identity-seed",1:1,2:1,3:algorithm}`.
+There is no default algorithm; Blah clients choose `.ed25519`. P-256 identity derivation
+is unsupported. These are recovery words, not a BIP 39 wallet seed.
+`identityKey(matching:using:)` checks the derived key against a trusted profile.
+`Tests/Vectors/identity-seed.json` holds cross-language vectors.
 
-## Paper device keys
+``SealedIdentitySeed`` encrypts the entropy to an encryption key for storage or transfer.
+The record `{0:"Diem/sealed-identity-seed",1:1,2:identity,3:recipient,4:encapsulatedKey,5:ciphertext}`
+binds keys 0–3 as both HPKE info and AAD. Opening re-derives and checks the identity.
+Recovery words are the backup; applications own encrypted seed custody and consent.
 
-A ``PaperDeviceKey`` is a software device key written down as 24 BIP 39 English words.
-The words carry 256 bits of entropy and a checksum. Each algorithm's device seed is
-HKDF-SHA256 of that entropy under a canonical derivation context, so the words are not a
-BIP 39 wallet seed. The identity key certifies the paper's public key like any other
-device, and removing it works the same way. Renewal with the identity key keeps it
-certified; if nothing renews it, it expires with its certificate.
-
-To use the paper, decode the words and fetch the identity's current profile.
-`deviceKey(listedIn:using:)` derives a key only for the algorithms that profile lists and
-returns the one it certifies. Like every device key, the paper signs proofs and profile
-content but cannot certify devices or recover the identity key. Ed25519 and ML-DSA-65
-papers are supported; P-256 belongs in hardware. `Tests/Vectors/paper-device-key.json`
-holds cross-language vectors.
+`Profile.enrolling(_:identityKey:profileLifetime:deviceLifetime:using:)` certifies a
+fresh device with the recovered identity key, preserving existing devices and the signed
+revision chain. The caller obtains the latest trusted profile, enforces its version
+floor, retains and publishes the new revision. Device keys stay on their creating device.
+``KeyProtection/nonExportable`` describes platform-held keys such as non-extractable
+WebCrypto keys without claiming hardware protection; ``KeyProtection/hardware`` remains
+for hardware stores such as Secure Enclave.
 
 ## Topics
 
@@ -125,8 +120,8 @@ holds cross-language vectors.
 - ``IdentityPrivateKey``
 - ``DevicePublicKey``
 - ``DevicePrivateKey``
-- ``PaperDeviceKey``
-- ``SealedIdentityKey``
+- ``IdentitySeed``
+- ``SealedIdentitySeed``
 
 ### Cryptographic primitives
 

@@ -2,6 +2,8 @@
 public enum KeyProtection: Sendable, Hashable {
   /// Secret bytes are in process memory and can be exported.
   case software
+  /// A platform-held secret that cannot be exported, without a hardware guarantee.
+  case nonExportable
   /// The secret never leaves platform hardware such as the Secure Enclave or Android Keystore.
   case hardware
 }
@@ -88,7 +90,7 @@ public struct PublicKey: Hashable, Sendable {
 public struct PrivateKey: Sendable {
   public let publicKey: PublicKey
   public let protection: KeyProtection
-  /// The exportable secret of a ``KeyProtection/software`` key; `nil` for hardware keys.
+  /// The exportable secret of a ``KeyProtection/software`` key; `nil` for non-exportable and hardware keys.
   public let rawRepresentation: [UInt8]?
   private let sign: @Sendable ([UInt8]) async throws -> [UInt8]
 
@@ -99,7 +101,7 @@ public struct PrivateKey: Sendable {
   ) {
     self.publicKey = publicKey
     self.protection = protection
-    self.rawRepresentation = rawRepresentation
+    self.rawRepresentation = protection == .software ? rawRepresentation : nil
     self.sign = sign
   }
 
@@ -171,7 +173,7 @@ public struct EncryptionPublicKey: Hashable, Sendable {
 public struct EncryptionPrivateKey: Sendable {
   public let publicKey: EncryptionPublicKey
   public let protection: KeyProtection
-  /// The exportable secret of a ``KeyProtection/software`` key; `nil` for hardware keys.
+  /// The exportable secret of a ``KeyProtection/software`` key; `nil` for non-exportable and hardware keys.
   public let rawRepresentation: [UInt8]?
   private let openBox: @Sendable (SealedBox, [UInt8]) async throws -> [UInt8]
 
