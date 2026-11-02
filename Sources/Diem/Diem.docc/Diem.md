@@ -91,10 +91,14 @@ The record `{0:"Diem/sealed-identity-seed",1:1,2:identity,3:recipient,4:encapsul
 binds keys 0–3 as both HPKE info and AAD. Opening re-derives and checks the identity.
 Recovery words are the backup; applications own encrypted seed custody and consent.
 
-`Profile.enrolling(_:identityKey:profileLifetime:deviceLifetime:using:)` certifies a
-fresh device with the recovered identity key, preserving existing devices and the signed
-revision chain. The caller obtains the latest trusted profile, enforces its version
-floor, retains and publishes the new revision. Device keys stay on their creating device.
+`Profile.enrolling(_:identityKey:removing:publishing:profileLifetime:deviceLifetime:using:)`
+certifies a fresh device with the recovered identity key and preserves the signed
+revision chain. `removing` revokes listed device IDs in the same revision, advancing the
+generation once and certifying only the final set, even at the 128-device limit. It
+rejects unknown IDs and removal of the fresh signer. `publishing` optionally replaces
+the content; otherwise its fields are preserved. The caller obtains the latest trusted
+profile, enforces its version floor, retains and publishes the new revision. Device keys
+stay on their creating device.
 ``KeyProtection/nonExportable`` describes platform-held keys such as non-extractable
 WebCrypto keys without claiming hardware protection; ``KeyProtection/hardware`` remains
 for hardware stores such as Secure Enclave.

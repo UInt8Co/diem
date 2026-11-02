@@ -160,16 +160,18 @@ public struct BasicIdentity<Profile: Diem.Profile>: Identity {
   }
 
   /// Enrolls `device` in `profile` with a recovered identity key, as
-  /// `Profile.enrolling(_:identityKey:profileLifetime:deviceLifetime:using:)`, and opens
-  /// the identity on that device.
+  /// `Profile.enrolling(_:identityKey:removing:publishing:profileLifetime:deviceLifetime:using:)`,
+  /// and opens the identity on that device.
   public static func enrolling(
     _ device: DevicePrivateKey, in profile: Profile, identityKey: IdentityPrivateKey,
+    removing removedDevices: Set<Digest> = [], publishing content: Profile.Content? = nil,
     profileLifetime: UInt64 = ProfileRecord.defaultLifetime,
     deviceLifetime: UInt64 = DeviceCertificate.defaultLifetime,
     using backend: some CryptoBackend
   ) async throws -> Self {
     let next = try await profile.enrolling(
-      device, identityKey: identityKey, profileLifetime: profileLifetime,
+      device, identityKey: identityKey, removing: removedDevices, publishing: content,
+      profileLifetime: profileLifetime,
       deviceLifetime: deviceLifetime, using: backend)
     return try await Self(profile: next, deviceKey: device, identityKey: identityKey,
       profileLifetime: profileLifetime, deviceLifetime: deviceLifetime, using: backend)

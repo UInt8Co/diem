@@ -86,25 +86,41 @@ extension Profile {
   }
 
   /// The next revision, certifying `device` with a recovered identity key and signed by
-  /// it. Existing devices and the revision chain are preserved.
+  /// it. Removes `removedDevices` in the same revision, reissuing the final device set
+  /// in a new generation when any are removed. The signing device cannot be removed.
+  /// Publishes `content` if supplied, otherwise preserves the current fields.
   ///
   /// The caller fetches this latest trusted profile and checks its monotonic version
   /// before recovery, then durably stores and publishes the result before using the
   /// new device.
   public func enrolling(
     _ device: DevicePrivateKey, identityKey: IdentityPrivateKey,
+    removing removedDevices: Set<Digest> = [], publishing content: Content? = nil,
     profileLifetime: UInt64 = ProfileRecord.defaultLifetime,
     deviceLifetime: UInt64 = DeviceCertificate.defaultLifetime,
     using backend: some CryptoBackend
   ) async throws -> Self {
     try await verify(using: backend, at: validity.notBefore)
     guard identityKey.publicKey == self.identityKey,
-      !device.publicKey.key.hasSameMaterial(as: identityKey.publicKey.key)
+      !device.publicKey.key.hasSameMaterial(as: identityKey.publicKey.key),
+      !removedDevices.contains(device.publicKey.id)
     else { throw DiemError.identityMismatch }
-    let validity = try Validity(starting: backend.now, lifetime: deviceLifetime)
-    let contentValidity = try Validity(starting: backend.now, lifetime: profileLifetime)
+    guard removedDevices.allSatisfy({ self.device($0) != nil }) else {
+      throw DiemError.deviceNotListed
+    }
+    guard revision < UInt64(Int64.max),
+      removedDevices.isEmpty || generation < UInt64(Int64.max)
+    else { throw DiemError.invalidEncoding }
+    let generation = generation + (removedDevices.isEmpty ? 0 : 1)
+    let keys = devices.map { $0.device }.filter {
+      !removedDevices.contains($0.id) && $0 != device.publicKey
+    } + [device.publicKey]
+    guard keys.count <= ProfileRecord.maximumDevices else { throw DiemError.invalidEncoding }
+    let now = backend.now
+    let validity = try Validity(starting: now, lifetime: deviceLifetime)
+    let contentValidity = try Validity(starting: now, lifetime: profileLifetime)
     guard contentValidity.expiresAt <= validity.expiresAt else { throw DiemError.invalidValidity }
-    let keys = devices.map { $0.device }.filter { $0 != device.publicKey } + [device.publicKey]
+    let fields = try content.map { try Self.fields(for: $0) } ?? record.fields
     var certificates: [DeviceCertificate] = []
     for key in keys {
       certificates.append(try await DeviceCertificate.issue(
@@ -113,7 +129,7 @@ extension Profile {
     return try Self(record: await ProfileRecord.sign(
       identityKey: self.identityKey, devices: certificates, by: device,
       revision: revision + 1, previousDigest: digest, validity: contentValidity,
-      fields: record.fields))
+      fields: fields))
   }
 }
 
