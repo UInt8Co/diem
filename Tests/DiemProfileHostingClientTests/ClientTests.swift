@@ -48,7 +48,7 @@ import Testing
     let release = try await current.releasing(labels: ["bob", "alice"], at: client) { content, domains in
       ProfileFields(domains: domains, application: content.application)
     }
-    #expect(release.via == "bob" && release.proofs.isEmpty)
+    #expect(release.via == .name("bob") && release.proofs.isEmpty)
     try await client.publish(release, solver: solver)
     let released = release.profile
     #expect(released.revision == 4)
@@ -67,7 +67,7 @@ import Testing
     let release = try await identity.releasing(labels: ["alice"], at: client) { _, domains in
       ProfileFields(domains: domains)
     }
-    #expect(release.via == "bob")
+    #expect(release.via == .name("bob"))
     try await client.publish(release, solver: PortableProofOfWorkSolver())
     let next = release.profile
     #expect(client.labels(in: next) == ["bob"])

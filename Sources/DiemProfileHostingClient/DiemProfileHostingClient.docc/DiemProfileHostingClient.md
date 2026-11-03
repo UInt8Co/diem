@@ -4,8 +4,8 @@ Claim names and publish signed Diem profiles through an injected HTTP transport.
 
 ## Overview
 
-A hosting domain assigns `<label>.<domain>` first come, first served. One PUT to a
-listed name publishes the identity's complete signed profile and replaces all its
+A hosting domain may assign `<label>.<domain>` first come, first served and/or serve
+its own domain (the apex). One PUT to a listed name publishes the identity's complete signed profile and replaces all its
 claims under that hosting domain atomically. If any name fails, the whole request
 fails. Availability and ownership plans are hints; the server decides publication.
 
@@ -21,9 +21,12 @@ try await host.publish(claim, solver: solver)
 
 ### Claim, update and release
 
-``ProfileHostingClient/policy()`` reads the apex policy, including the label pattern
-and claim, update and expiry-grace limits. The pattern is informational; the server
-checks it. Labels supplied to the client must already be lowercase DNS labels.
+``ProfileHostingClient/policy()`` reads the hosting policy. `policy.apex` indicates
+apex support (absent on the wire means false); `policy.servesChildNames` indicates child-name
+support. The optional `policy.names` groups the label pattern, claim, update and expiry-grace
+limits and proof parameters: all child-name fields must be present or all absent. A policy
+with neither capability is invalid. The pattern is informational; the server checks it.
+Labels supplied to the client must already be lowercase DNS labels.
 ``ProfileHostingClient/name(_:)`` reads availability. Planning distinguishes invalid,
 taken, held and new names. A held-name hint compares the fetched profile's identity ID;
 it does not verify the profile's signatures or validity.
@@ -43,9 +46,25 @@ on `proof-required`, solving exactly the server's listed labels. Other refusals 
 returned as ``ProfileHostingError/problem(_:)``; rate limits include Retry-After seconds.
 A successful reply must identify the submitted identity and revision.
 
+Publication defaults to the first listed child name of this host, falling back to the
+apex when no child is listed and the profile lists the host's domain. Use
+`host.publish(profile, via: .apex)` to explicitly choose the apex, including when child
+names are also listed. `HostingTarget.name("alice")` explicitly selects a child; the
+existing string `via: "alice"` overloads also remain available. `HostingPublication.via`
+is an optional `HostingTarget`; nil uses the default selection. Apex publication uses
+`PUT https://<domain>/.well-known/diem/profile.cbor`, omits `Diem-Hosting-Proof` even if
+proofs are supplied, and never invokes a solver or retries a proof-required refusal.
+The host controls which identity may publish its apex.
+
+For discovery, try the identity's first domain's policy for apex support first. Otherwise,
+try its parent's policy for child-name support; otherwise use manual HTTPS publication.
+Unavailable or invalid/mismatched policies move on to the next step. Store the chosen
+hosting domain; equality with the identity's first domain represents apex publication.
+
 `identity.releasing(labels:at:transform:)` signs a revision without those hosted names,
 to be published through a retained name. Releasing every hosted name sends the new
-revision through a removed, currently held name. The low-level `via` parameter supports that same flow;
+revision through a listed apex if retained, otherwise through a removed, currently held name.
+The low-level `via` parameter supports that same flow;
 a removed name cannot be the request host while other hosted names remain listed.
 
 ### Caller responsibilities
@@ -57,7 +76,8 @@ The client also rejects responses over 262,144 bytes. JSON parsing is limited to
 nested levels, rejects duplicate keys and malformed UTF-8, and reads schema integers
 exactly without floating-point conversion. Unknown object fields are accepted.
 
-``ProfileHostingClient/profile(at:)`` returns raw CBOR or nil on 404. Callers that trust
+`host.profile(at: "alice")` and `host.profile(at: .apex)` return raw CBOR or nil on 404.
+The apex GET uses the same URL as its PUT. Callers that trust
 a discovered profile must verify it with their Diem `CryptoBackend`, including validity
 and that its signed domain list serves the requested name. Signing remains with Diem's
 `Identity` and backend. Applications retain their revision floors and decide when to
@@ -102,6 +122,7 @@ equality and hashing. No networking, platform cryptography or worker pool is bui
 
 - ``ProfileHostingClient``
 - ``HostingPublication``
+- ``HostingTarget``
 - ``HostingPolicy``
 - ``HostedName``
 - ``HostingPlan``

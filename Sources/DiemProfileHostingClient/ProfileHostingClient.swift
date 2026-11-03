@@ -34,7 +34,12 @@ public struct ProfileHostingClient<HTTP: HostingHTTPClient>: Sendable {
 
   /// Raw profile bytes, or nil on 404. The caller verifies signatures and validity.
   public func profile(at label: String) async throws -> [UInt8]? {
-    let response = try await send(.init(method: .get, url: profileURL(label)))
+    try await profile(at: .name(label))
+  }
+
+  /// Raw profile bytes at a child name or this host's apex, or nil on 404.
+  public func profile(at target: HostingTarget) async throws -> [UInt8]? {
+    let response = try await send(.init(method: .get, url: profileURL(target)))
     if response.status == 404 { return nil }
     try requireSuccess(response)
     return response.body
@@ -129,9 +134,15 @@ public struct ProfileHostingClient<HTTP: HostingHTTPClient>: Sendable {
     return validLabel(label, domain: domain) ? label : nil
   }
 
-  func profileURL(_ label: String) throws(ProfileHostingError) -> String {
-    guard validLabel(label, domain: domain) else { throw .invalidLabel(label) }
-    return "https://" + label + "." + domain.name + "/.well-known/diem/profile.cbor"
+  func profileURL(_ target: HostingTarget) throws(ProfileHostingError) -> String {
+    let authority: String
+    switch target {
+    case .apex: authority = domain.name
+    case .name(let label):
+      guard validLabel(label, domain: domain) else { throw .invalidLabel(label) }
+      authority = label + "." + domain.name
+    }
+    return "https://" + authority + "/.well-known/diem/profile.cbor"
   }
 
   func send(_ request: HostingHTTPRequest) async throws -> HostingHTTPResponse {

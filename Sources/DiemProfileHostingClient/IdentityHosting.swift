@@ -7,10 +7,16 @@ import Diem
 public struct HostingPublication<Profile: DomainNamedProfile>: Sendable {
   public let profile: Profile
   public let proofs: [String: [UInt8]]
-  /// The name host to send it to; `nil` sends it to the profile's first hosted name.
-  public let via: String?
+  /// The publication target; nil selects the first child name, then a listed apex.
+  public let via: HostingTarget?
 
   public init(profile: Profile, proofs: [String: [UInt8]] = [:], via: String? = nil) {
+    self.profile = profile
+    self.proofs = proofs
+    self.via = via.map(HostingTarget.name)
+  }
+
+  public init(profile: Profile, proofs: [String: [UInt8]] = [:], via: HostingTarget) {
     self.profile = profile
     self.proofs = proofs
     self.via = via
@@ -22,8 +28,11 @@ extension ProfileHostingClient {
   public func publish<Profile>(_ publication: HostingPublication<Profile>,
     solver: some ProofOfWorkSolver
   ) async throws {
-    try await publish(publication.profile, via: publication.via, proofs: publication.proofs,
-      solver: solver)
+    if let target = publication.via {
+      try await publish(publication.profile, via: target, proofs: publication.proofs, solver: solver)
+    } else {
+      try await publish(publication.profile, proofs: publication.proofs, solver: solver)
+    }
   }
 }
 
@@ -47,7 +56,7 @@ extension Identity where Profile: DomainNamedProfile {
   }
 
   /// Signs the next revision without the named hosted domains. When none remain, it is
-  /// published via the first removed name. The caller stores the revision, then publishes it.
+  /// published via a listed apex or the first removed name. Store the revision before publishing.
   public func releasing<HTTP: HostingHTTPClient>(
     labels: [String], at host: ProfileHostingClient<HTTP>,
     transform: (Profile.Content, [DomainName]) throws -> Profile.Content
@@ -63,7 +72,11 @@ extension Identity where Profile: DomainNamedProfile {
     let removed = labels.map { $0 + "." + host.domain.name }
     let domains = profile.domains.filter { !removed.contains($0.name) }
     let next = try await hostedRevision(domains: domains, transform: transform)
-    return HostingPublication(profile: next, via: host.labels(in: next).first ?? via)
+    let target: HostingTarget
+    if let retained = host.labels(in: next).first { target = .name(retained) }
+    else if next.domains.contains(host.domain) { target = .apex }
+    else { target = .name(via) }
+    return HostingPublication(profile: next, via: target)
   }
 
   private func hostedRevision(domains: [DomainName],
