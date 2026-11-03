@@ -16,9 +16,9 @@ public struct ProfileHostingClient<HTTP: HostingHTTPClient>: Sendable {
     return try HostingPolicy(json: response.body, domain: domain)
   }
 
-  /// Labels are lowercase DNS labels; pattern validity is decided by the host.
+  /// Labels are lowercase DNS child labels or `@` for the apex; the host decides validity.
   public func name(_ label: String) async throws -> HostedName {
-    guard validLabel(label, domain: domain) else {
+    guard validWireLabel(label, domain: domain) else {
       return HostedName(label: label, status: .invalid, requiredBits: nil)
     }
     let response = try await send(.init(method: .get,
@@ -34,7 +34,7 @@ public struct ProfileHostingClient<HTTP: HostingHTTPClient>: Sendable {
 
   /// Raw profile bytes, or nil on 404. The caller verifies signatures and validity.
   public func profile(at label: String) async throws -> [UInt8]? {
-    try await profile(at: .name(label))
+    try await profile(at: HostingTarget(wireLabel: label))
   }
 
   /// Raw profile bytes at a child name or this host's apex, or nil on 404.
@@ -45,12 +45,13 @@ public struct ProfileHostingClient<HTTP: HostingHTTPClient>: Sendable {
     return response.body
   }
 
-  /// Direct children of this domain, in signed profile order.
+  /// Hosted wire labels in signed profile order, including `@` for this domain's apex.
   public func labels(in profile: some DomainNamedProfile) -> [String] {
     profile.domains.compactMap { hostedLabel($0) }
   }
 
-  /// Ownership is an unverified discovery hint. The server decides the subsequent PUT.
+  /// Plans child labels and/or `@`. Ownership is an unverified discovery hint;
+  /// the server decides the subsequent PUT. Apex difficulty must come from name status.
   public func plan(labels: [String], identity: Digest) async throws -> HostingPlan {
     var names: [HostingPlan.Name] = []
     var fallback: HostingPolicy?
@@ -69,6 +70,7 @@ public struct ProfileHostingClient<HTTP: HostingHTTPClient>: Sendable {
         let bits: Int64
         if let required = name.requiredBits { bits = required }
         else {
+          guard label != "@" else { throw ProfileHostingError.unsolvable(label) }
           if fallback == nil { fallback = try await policy() }
           guard let required = fallback!.requiredBits(for: label) else {
             throw ProfileHostingError.unsolvable(label)
@@ -128,6 +130,7 @@ public struct ProfileHostingClient<HTTP: HostingHTTPClient>: Sendable {
   }
 
   func hostedLabel(_ name: DomainName) -> String? {
+    if name == domain { return HostingTarget.apex.wireLabel }
     let suffix = "." + domain.name
     guard name.name.hasSuffix(suffix) else { return nil }
     let label = String(name.name.dropLast(suffix.count))
@@ -135,14 +138,8 @@ public struct ProfileHostingClient<HTTP: HostingHTTPClient>: Sendable {
   }
 
   func profileURL(_ target: HostingTarget) throws(ProfileHostingError) -> String {
-    let authority: String
-    switch target {
-    case .apex: authority = domain.name
-    case .name(let label):
-      guard validLabel(label, domain: domain) else { throw .invalidLabel(label) }
-      authority = label + "." + domain.name
-    }
-    return "https://" + authority + "/.well-known/diem/profile.cbor"
+    let authority = try target.hostedDomain(at: domain)
+    return "https://" + authority.name + "/.well-known/diem/profile.cbor"
   }
 
   func send(_ request: HostingHTTPRequest) async throws -> HostingHTTPResponse {

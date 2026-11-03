@@ -13,7 +13,7 @@ public struct HostingPublication<Profile: DomainNamedProfile>: Sendable {
   public init(profile: Profile, proofs: [String: [UInt8]] = [:], via: String? = nil) {
     self.profile = profile
     self.proofs = proofs
-    self.via = via.map(HostingTarget.name)
+    self.via = via.map { HostingTarget(wireLabel: $0) }
   }
 
   public init(profile: Profile, proofs: [String: [UInt8]] = [:], via: HostingTarget) {
@@ -37,7 +37,8 @@ extension ProfileHostingClient {
 }
 
 extension Identity where Profile: DomainNamedProfile {
-  /// Plans and proves added names and signs the next revision listing them. Existing
+  /// Plans and proves added wire labels (child labels or `@` for the apex), then signs
+  /// the next revision listing their domains. Existing
   /// domains retain their order. Like Diem's other operations, nothing is adopted: the
   /// caller stores the revision, then publishes it.
   public func claiming<HTTP: HostingHTTPClient>(
@@ -48,34 +49,32 @@ extension Identity where Profile: DomainNamedProfile {
     let proofs = try await host.prove(plan, identity: id, solver: solver)
     var domains = profile.domains
     for label in labels {
-      let name = try DomainName(label + "." + host.domain.name)
+      let name = try HostingTarget(wireLabel: label).hostedDomain(at: host.domain)
       if !domains.contains(name) { domains.append(name) }
     }
     return HostingPublication(
       profile: try await hostedRevision(domains: domains, transform: transform), proofs: proofs)
   }
 
-  /// Signs the next revision without the named hosted domains. When none remain, it is
-  /// published via a listed apex or the first removed name. Store the revision before publishing.
+  /// Signs the next revision without the named hosted domains (`@` removes the apex).
+  /// Uses a retained child, then a retained apex, then the first removed name.
+  /// Store the revision before publishing.
   public func releasing<HTTP: HostingHTTPClient>(
     labels: [String], at host: ProfileHostingClient<HTTP>,
     transform: (Profile.Content, [DomainName]) throws -> Profile.Content
   ) async throws -> HostingPublication<Profile> {
     let held = host.labels(in: profile)
     for label in labels {
-      guard validLabel(label, domain: host.domain) else {
+      guard validWireLabel(label, domain: host.domain) else {
         throw ProfileHostingError.invalidLabel(label)
       }
       guard held.contains(label) else { throw ProfileHostingError.hostNotListed }
     }
     guard let via = labels.first else { throw ProfileHostingError.noHostedName }
-    let removed = labels.map { $0 + "." + host.domain.name }
-    let domains = profile.domains.filter { !removed.contains($0.name) }
+    let removed = try labels.map { try HostingTarget(wireLabel: $0).hostedDomain(at: host.domain) }
+    let domains = profile.domains.filter { !removed.contains($0) }
     let next = try await hostedRevision(domains: domains, transform: transform)
-    let target: HostingTarget
-    if let retained = host.labels(in: next).first { target = .name(retained) }
-    else if next.domains.contains(host.domain) { target = .apex }
-    else { target = .name(via) }
+    let target = host.preferredTarget(in: next) ?? HostingTarget(wireLabel: via)
     return HostingPublication(profile: next, via: target)
   }
 

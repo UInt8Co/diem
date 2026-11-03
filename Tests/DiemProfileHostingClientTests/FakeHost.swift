@@ -28,28 +28,33 @@ actor FakeHost: HostingHTTPClient {
     let url = URL(string: request.url)!
     let host = url.host!
     let path = url.path
-    if host == domain {
-      guard request.method == .get else { return .init(status: 404) }
-      if path == "/.well-known/diem/hosting" { return Self.json(Self.policy()) }
+    if host == domain, request.method == .get {
+      if path == "/.well-known/diem/hosting" {
+        var policy = Self.policy()
+        policy["apex"] = true
+        return Self.json(policy)
+      }
       let prefix = "/.well-known/diem/hosting/names/"
-      guard path.hasPrefix(prefix) else { return .init(status: 404) }
-      let label = String(path.dropFirst(prefix.count))
-      return Self.json(["label": label,
-        "status": label == "reserved" ? "invalid" : claims[label] == nil ? "available" : "claimed",
-        "requiredBits": bits])
+      if path.hasPrefix(prefix) {
+        let label = String(path.dropFirst(prefix.count))
+        return Self.json(["label": label,
+          "status": label == "reserved" ? "invalid" : claims[label] == nil ? "available" : "claimed",
+          "requiredBits": bits])
+      }
     }
-    guard host.hasSuffix("." + domain), path == "/.well-known/diem/profile.cbor" else {
+    guard host == domain || host.hasSuffix("." + domain),
+      path == "/.well-known/diem/profile.cbor" else {
       return .init(status: 404)
     }
-    let label = String(host.dropLast(domain.count + 1))
+    let label = host == domain ? "@" : String(host.dropLast(domain.count + 1))
     guard !label.contains(".") else { return .init(status: 404) }
     if request.method == .get || request.method == .head {
       guard let profile = claims[label] else { return .init(status: 404) }
       return .init(status: 200, body: request.method == .head ? [] : profile.encoding)
     }
     let profile = try ProfileRecord(encoding: request.body ?? [])
-    let names = profile.domains.map(\.name).filter { $0.hasSuffix("." + domain) }
-      .map { String($0.dropLast(domain.count + 1)) }
+    let names = profile.domains.map(\.name).filter { $0 == domain || $0.hasSuffix("." + domain) }
+      .map { $0 == domain ? "@" : String($0.dropLast(domain.count + 1)) }
     guard names.contains(label) || (names.isEmpty && claims[label]?.id == profile.id) else {
       return problem("host-not-listed", status: 422)
     }
@@ -95,7 +100,7 @@ actor FakeHost: HostingHTTPClient {
 
   func published(_ profile: ProfileRecord, names: [String]) -> HostingHTTPResponse {
     Self.json(["identity": Self.base64(profile.id.bytes), "revision": profile.revision,
-      "domains": names.sorted().map { $0 + "." + domain }])
+      "domains": names.sorted().map { $0 == "@" ? domain : $0 + "." + domain }])
   }
 
   func problem(_ code: String, status: Int, labels: [String] = []) -> HostingHTTPResponse {

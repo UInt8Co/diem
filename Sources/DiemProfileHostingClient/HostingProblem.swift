@@ -54,7 +54,9 @@ public struct HostingProblem: Error, Sendable, Equatable {
     if let value = fields["labels"] {
       for item in try value.array() {
         let label = try item.object()
-        parsed.append(try Label(label: label.field("label").string(),
+        let wireLabel = try label.field("label").string()
+        guard validWireLabel(wireLabel) else { throw .invalidResponse }
+        parsed.append(try Label(label: wireLabel,
           reason: label.field("reason").string(), requiredBits: label["requiredBits"]?.integer()))
       }
     }

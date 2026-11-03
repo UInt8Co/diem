@@ -49,9 +49,9 @@ public struct HostingPolicy: Sendable, Equatable {
     guard apex || servesChildNames else { throw .invalidResponse }
   }
 
-  /// Nil means no child-name policy, overflow or a requirement outside 0...64.
+  /// Nil for the apex (`@`), no child-name policy, overflow or a requirement outside 0...64.
   public func requiredBits(for label: String) -> Int? {
-    guard let names else { return nil }
+    guard label != "@", let names else { return nil }
     return ProofOfWorkPuzzle.requiredBits(for: label, baseBits: names.baseBits,
       bitsPerShorterCharacter: names.bitsPerShorterCharacter, referenceLength: names.referenceLength)
   }

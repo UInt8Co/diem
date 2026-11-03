@@ -1,9 +1,28 @@
 import Diem
 
-/// A child label under the hosting domain, or the hosting domain itself.
+/// A child label under the hosting domain, or the hosting domain itself (wire label `@`).
 public enum HostingTarget: Sendable, Equatable {
   case name(String)
   case apex
+
+  init(wireLabel: String) {
+    self = wireLabel == "@" ? .apex : .name(wireLabel)
+  }
+
+  var wireLabel: String {
+    switch self {
+    case .name(let label): label
+    case .apex: "@"
+    }
+  }
+
+  func hostedDomain(at domain: DomainName) throws(ProfileHostingError) -> DomainName {
+    let label = wireLabel
+    guard validWireLabel(label, domain: domain) else { throw .invalidLabel(label) }
+    if label == "@" { return domain }
+    guard let hosted = try? DomainName(label + "." + domain.name) else { throw .invalidLabel(label) }
+    return hosted
+  }
 }
 
 extension ProfileHostingClient {
@@ -15,7 +34,7 @@ extension ProfileHostingClient {
     try await publish(profile, via: publicationTarget(profile, label: label), proofs: proofs)
   }
 
-  /// Publishes through an explicit child name or apex. Apex requests never send proofs.
+  /// Publishes through an explicit child name or apex, sending any supplied proofs.
   public func publish(_ profile: some DomainNamedProfile, via target: HostingTarget,
     proofs: [String: [UInt8]] = [:]
   ) async throws {
@@ -32,14 +51,14 @@ extension ProfileHostingClient {
       solver: solver)
   }
 
-  /// Retries child-name publication once on proof-required. Apex refusals never run a solver.
+  /// Retries publication once on proof-required, including proofs for the apex label `@`.
   public func publish(_ profile: some DomainNamedProfile, via target: HostingTarget,
     proofs initial: [String: [UInt8]] = [:], solver: some ProofOfWorkSolver
   ) async throws {
     let response = try await send(publication(profile, via: target, proofs: initial))
     if response.status == 403 {
       let problem = try HostingProblem(response: response)
-      if problem.code == .proofRequired, case .name = target {
+      if problem.code == .proofRequired {
         let hosted = labels(in: profile)
         var seen: Set<String> = []
         // Validate the entire refusal before spending work on any label.
@@ -48,6 +67,9 @@ extension ProfileHostingClient {
             item.reason == "proof-required"
           else { throw ProfileHostingError.invalidResponse }
           if let bits = item.requiredBits, !(0...64).contains(bits) {
+            throw ProfileHostingError.unsolvable(item.label)
+          }
+          if item.label == "@", item.requiredBits == nil {
             throw ProfileHostingError.unsolvable(item.label)
           }
         }
@@ -76,10 +98,16 @@ extension ProfileHostingClient {
   private func publicationTarget(_ profile: some DomainNamedProfile, label: String?)
     throws(ProfileHostingError) -> HostingTarget
   {
-    if let label { return .name(label) }
-    if let first = labels(in: profile).first { return .name(first) }
-    if profile.domains.contains(domain) { return .apex }
-    throw .noHostedName
+    if let label { return HostingTarget(wireLabel: label) }
+    guard let target = preferredTarget(in: profile) else { throw .noHostedName }
+    return target
+  }
+
+  func preferredTarget(in profile: some DomainNamedProfile) -> HostingTarget? {
+    let hosted = labels(in: profile)
+    if let first = hosted.first(where: { $0 != "@" }) { return .name(first) }
+    if let first = hosted.first { return HostingTarget(wireLabel: first) }
+    return nil
   }
 
   private func publication(_ profile: some DomainNamedProfile, via target: HostingTarget,
@@ -89,16 +117,11 @@ extension ProfileHostingClient {
     for name in profile.domains where name != domain && name.name.hasSuffix("." + domain.name) {
       guard hostedLabel(name) != nil else { throw .invalidLabel(name.name) }
     }
-    switch target {
-    case .apex:
-      guard profile.domains.contains(domain) else { throw .hostNotListed }
-    case .name(let label):
-      guard hosted.isEmpty || hosted.contains(label) else { throw .hostNotListed }
-    }
+    guard hosted.isEmpty || hosted.contains(target.wireLabel) else { throw .hostNotListed }
     let bytes = profile.encoding
     guard bytes.count <= CBOR.maximumBytes else { throw .tooLarge }
     var headers = ["Content-Type": "application/cbor"]
-    if case .name = target, !proofs.isEmpty {
+    if !proofs.isEmpty {
       headers["Diem-Hosting-Proof"] = try hostingProofHeader(proofs)
     }
     return try HostingHTTPRequest(method: .put, url: profileURL(target), headers: headers, body: bytes)

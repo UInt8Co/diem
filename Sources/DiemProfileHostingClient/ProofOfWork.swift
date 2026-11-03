@@ -11,7 +11,7 @@ public struct ProofOfWorkPuzzle: Sendable, Equatable {
   public init(domain: DomainName, label: String, identityID: Digest, requiredBits: Int)
     throws(ProfileHostingError)
   {
-    guard validLabel(label, domain: domain) else { throw .invalidLabel(label) }
+    guard validWireLabel(label, domain: domain) else { throw .invalidLabel(label) }
     guard (0...64).contains(requiredBits) else { throw .unsolvable(label) }
     self.domain = domain
     self.label = label
@@ -28,10 +28,11 @@ public struct ProofOfWorkPuzzle: Sendable, Equatable {
 
   /// `baseBits + bitsPerShorterCharacter × max(0, referenceLength − label.utf8.count)` in
   /// signed 64-bit arithmetic on every platform, as hosts compute it. Nil means overflow or
-  /// a requirement outside 0...64.
+  /// a requirement outside 0...64. The apex (`@`) requires an explicit host requirement.
   public static func requiredBits(for label: String, baseBits: Int64,
     bitsPerShorterCharacter: Int64, referenceLength: Int64
   ) -> Int? {
+    guard label != "@" else { return nil }
     let (shortfall, underflow) = referenceLength.subtractingReportingOverflow(Int64(label.utf8.count))
     let (extra, overflow) = bitsPerShorterCharacter.multipliedReportingOverflow(by: max(0, shortfall))
     let (bits, additionOverflow) = baseBits.addingReportingOverflow(extra)
@@ -79,11 +80,18 @@ func validLabel(_ label: String, domain: DomainName) -> Bool {
   !label.utf8.contains(46) && DomainName.isValid(label + "." + domain.name)
 }
 
+/// A wire label is a lowercase DNS child label or the reserved apex label `@`.
+func validWireLabel(_ label: String, domain: DomainName? = nil) -> Bool {
+  label == "@" || (!label.utf8.contains(46)
+    && DomainName.isValid(label + "." + (domain?.name ?? "example")))
+}
+
 /// The server's comma-separated, sorted label=nonce grammar, with unpadded base64url.
+/// Labels may be lowercase DNS child labels or `@` for the apex.
 public func hostingProofHeader(_ proofs: [String: [UInt8]]) throws(ProfileHostingError) -> String {
   var entries: [String] = []
   for label in proofs.keys.sorted() {
-    guard !label.utf8.contains(46), DomainName.isValid(label + ".example") else {
+    guard validWireLabel(label) else {
       throw .invalidLabel(label)
     }
     let nonce = proofs[label]!
