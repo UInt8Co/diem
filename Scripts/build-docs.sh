@@ -9,6 +9,7 @@ TARGETS=(
   Diem
   DiemSwiftCrypto
   DiemProfileHostingClient
+  DiemProfileHosting
 )
 
 # Swift 6.4's experimental HTML-content renderer crashes in FoundationXML on
@@ -22,7 +23,9 @@ rm -rf ./dist
 mkdir -p ./dist
 
 echo "→ Generating docs for all targets..."
+# DiemProfileHosting is empty unless its trait is enabled.
 swift package \
+  --traits ProfileHostingServer \
   --allow-writing-to-directory "./dist" \
   generate-documentation \
   $(for target in "${TARGETS[@]}"; do echo --target "$target"; done) \

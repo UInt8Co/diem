@@ -37,6 +37,19 @@ jobs:
           deno run --allow-read Scripts/verify-vectors.ts
           deno run --allow-read --allow-run --allow-write Scripts/verify-hpke-vectors.ts
 
+  # The server trait adds Hummingbird, Fluent and SwiftNIO; the job above proves the
+  # default graph builds without them.
+  profile-hosting-server:
+    name: Profile hosting server
+    runs-on: ubuntu-24.04
+    container: swift:6.4.0-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test the server
+        run: swift test -j 4 --traits ProfileHostingServer --filter DiemProfileHostingTests
+      - name: Build the standalone server
+        run: swift build -j 4 --traits ProfileHostingServer --product diem-profile-hosting
+
   # ── Test suite (macOS 26 for PQC crypto APIs) ─────────────────────────────
   test:
     name: Run Tests

@@ -120,7 +120,9 @@ unpadded base64url. The apex uses `label = "@"` and only host-supplied required 
 Hosts use the same contract types: ``hostingProofs(fromHeader:limit:)`` parses the proof
 header strictly (canonical base64url, no repeated labels, an entry limit),
 ``ProofOfWorkPuzzle/isSolved(by:)`` checks a nonce, and
-``HostingProblem/init(_:status:detail:labels:retryAfter:)`` builds a refusal.
+``HostingProblem/init(_:status:detail:labels:retryAfter:)`` builds a refusal. The
+`DiemProfileHosting` module, behind the package trait `ProfileHostingServer`, is a
+complete host built on them.
 
 ### Embedded Swift
 
