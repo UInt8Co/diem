@@ -101,6 +101,60 @@ public func hostingProofHeader(_ proofs: [String: [UInt8]]) throws(ProfileHostin
   return entries.joined(separator: ", ")
 }
 
+/// The inverse of ``hostingProofHeader(_:)``, as hosts parse it: spaces and tabs may surround
+/// labels, `=` and nonces. Nil when an entry is malformed, a label repeats, a nonce is not
+/// 1...64 bytes of canonical unpadded base64url, or there are more than `limit` entries.
+public func hostingProofs(fromHeader header: String, limit: Int) -> [String: [UInt8]]? {
+  var proofs: [String: [UInt8]] = [:]
+  var entries = 0
+  for entry in Array(header.utf8).split(separator: 44, omittingEmptySubsequences: false) {
+    entries += 1
+    guard entries <= limit else { return nil }
+    let pair = entry.split(separator: 61, omittingEmptySubsequences: false)
+    guard pair.count == 2 else { return nil }
+    let label = String(decoding: trimmingBlanks(pair[0]), as: UTF8.self)
+    guard validWireLabel(label), proofs[label] == nil,
+      let nonce = base64URLDecoded(trimmingBlanks(pair[1])), (1...64).contains(nonce.count)
+    else { return nil }
+    proofs[label] = nonce
+  }
+  return proofs
+}
+
+private func trimmingBlanks(_ bytes: ArraySlice<UInt8>) -> ArraySlice<UInt8> {
+  var bytes = bytes
+  while let first = bytes.first, first == 32 || first == 9 { bytes.removeFirst() }
+  while let last = bytes.last, last == 32 || last == 9 { bytes.removeLast() }
+  return bytes
+}
+
+/// Unpadded base64url with zero trailing bits, so that each value has one spelling.
+func base64URLDecoded(_ text: ArraySlice<UInt8>) -> [UInt8]? {
+  guard !text.isEmpty, text.count % 4 != 1 else { return nil }
+  var output: [UInt8] = []
+  var buffer: UInt32 = 0
+  var bits = 0
+  for character in text {
+    let value: UInt8
+    switch character {
+    case 65...90: value = character - 65
+    case 97...122: value = character - 71
+    case 48...57: value = character + 4
+    case 45: value = 62
+    case 95: value = 63
+    default: return nil
+    }
+    buffer = buffer << 6 | UInt32(value)
+    bits += 6
+    if bits >= 8 {
+      bits -= 8
+      output.append(UInt8(truncatingIfNeeded: buffer >> bits))
+      buffer &= (1 << bits) - 1
+    }
+  }
+  return buffer == 0 ? output : nil
+}
+
 func base64URL(_ bytes: [UInt8]) -> String {
   let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".utf8)
   var output: [UInt8] = []

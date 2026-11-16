@@ -34,6 +34,39 @@ import Testing
     }
   }
 
+  @Test func proofHeaderParsing() throws {
+    #expect(hostingProofs(fromHeader: "alice=AA, alice=AA", limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: "alice=AA=", limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: "alice=AB", limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: "alice=A", limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: "alice=", limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: "alice=A+", limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: "alice=AA, bob=AA", limit: 1) == nil)
+    #expect(hostingProofs(fromHeader: "=AA", limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: "Alice=AA", limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: "a.b=AA", limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: "", limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: "alice=" + String(repeating: "A", count: 87), limit: 3) == nil)
+    #expect(hostingProofs(fromHeader: " alice = AA ,\tbob = AQ ", limit: 3)
+      == ["alice": [0], "bob": [1]])
+    let proofs: [String: [UInt8]] = ["@": [7], "alice": Array(0...63), "bob": [251, 255]]
+    #expect(hostingProofs(fromHeader: try hostingProofHeader(proofs), limit: 3) == proofs)
+  }
+
+  @Test func hostRenderedProblem() throws {
+    let problem = HostingProblem(.rateLimited, status: 429, detail: "Later",
+      labels: [.init(label: "alice", reason: "rate-limited", requiredBits: 3)], retryAfter: 9)
+    #expect(problem.type == "urn:diem:profile-hosting:rate-limited")
+    #expect(problem.title == "rate-limited")
+    #expect(HostingProblem.Code("proof-required") == .proofRequired)
+    #expect(HostingProblem.Code.unknown("other").rawValue == "other")
+    for code in ["invalid-profile", "host-not-listed", "invalid-label", "too-many-claims",
+      "proof-required", "name-taken", "stale-revision", "rate-limited", "too-large", "busy"] {
+      #expect(HostingProblem.Code(code).rawValue == code)
+      #expect(HostingProblem.Code(code) != .unknown(code))
+    }
+  }
+
   @Test func cancellationAndBounds() async throws {
     let puzzle = try ProofOfWorkPuzzle(domain: domain, label: "alice",
       identityID: Digest(hashing: []), requiredBits: 64)

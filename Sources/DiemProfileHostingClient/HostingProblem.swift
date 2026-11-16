@@ -1,8 +1,27 @@
+/// An RFC 9457 refusal: parsed by clients and thrown and rendered by hosts.
 public struct HostingProblem: Error, Sendable, Equatable {
+  // Not RawRepresentable: its generic == would equate `.unknown("busy")` with `.busy`.
   public enum Code: Sendable, Equatable {
     case invalidProfile, hostNotListed, invalidLabel, tooManyClaims, proofRequired
     case nameTaken, staleRevision, rateLimited, tooLarge, busy
     case unknown(String)
+
+    /// The `<code>` in `urn:diem:profile-hosting:<code>`.
+    public var rawValue: String {
+      switch self {
+      case .invalidProfile: "invalid-profile"
+      case .hostNotListed: "host-not-listed"
+      case .invalidLabel: "invalid-label"
+      case .tooManyClaims: "too-many-claims"
+      case .proofRequired: "proof-required"
+      case .nameTaken: "name-taken"
+      case .staleRevision: "stale-revision"
+      case .rateLimited: "rate-limited"
+      case .tooLarge: "too-large"
+      case .busy: "busy"
+      case .unknown(let value): value
+      }
+    }
 
     public init(_ value: String) {
       switch value {
@@ -25,6 +44,12 @@ public struct HostingProblem: Error, Sendable, Equatable {
     public let label: String
     public let reason: String
     public let requiredBits: Int64?
+
+    public init(label: String, reason: String, requiredBits: Int64? = nil) {
+      self.label = label
+      self.reason = reason
+      self.requiredBits = requiredBits
+    }
   }
 
   public let type: String
@@ -35,6 +60,19 @@ public struct HostingProblem: Error, Sendable, Equatable {
   public let labels: [Label]
   /// Seconds from the Retry-After header, when present and valid.
   public let retryAfter: UInt64?
+
+  /// A refusal as a host sends it, typed `urn:diem:profile-hosting:<code>` and titled by its code.
+  public init(_ code: Code, status: Int, detail: String, labels: [Label] = [],
+    retryAfter: UInt64? = nil
+  ) {
+    self.code = code
+    type = "urn:diem:profile-hosting:" + code.rawValue
+    title = code.rawValue
+    self.status = status
+    self.detail = detail
+    self.labels = labels
+    self.retryAfter = retryAfter
+  }
 
   public init(response: HostingHTTPResponse) throws(ProfileHostingError) {
     let fields = try JSON(response.body).object()

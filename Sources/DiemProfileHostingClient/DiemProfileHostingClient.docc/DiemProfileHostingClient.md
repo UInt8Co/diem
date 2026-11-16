@@ -115,6 +115,13 @@ solver tries eight-byte big-endian counters starting at zero. Proofs are sent as
 `Diem-Hosting-Proof: @=<nonce>, alice=<nonce>, bob=<nonce>` with sorted labels and
 unpadded base64url. The apex uses `label = "@"` and only host-supplied required bits.
 
+### Hosts
+
+Hosts use the same contract types: ``hostingProofs(fromHeader:limit:)`` parses the proof
+header strictly (canonical base64url, no repeated labels, an entry limit),
+``ProofOfWorkPuzzle/isSolved(by:)`` checks a nonce, and
+``HostingProblem/init(_:status:detail:labels:retryAfter:)`` builds a refusal.
+
 ### Embedded Swift
 
 This Foundation-free target depends only on `Diem` and supports Swift 6.4 Embedded
@@ -147,3 +154,4 @@ equality and hashing. No networking, platform cryptography or worker pool is bui
 - ``ProofOfWorkSolver``
 - ``PortableProofOfWorkSolver``
 - ``hostingProofHeader(_:)``
+- ``hostingProofs(fromHeader:limit:)``
