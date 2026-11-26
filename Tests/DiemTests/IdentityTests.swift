@@ -113,6 +113,14 @@ import Testing
 
     backend.advance(by: ProfileRecord.defaultLifetime)
     await #expect(throws: DiemError.expired) { try await owner.profile.verify(using: backend) }
+    // A lapsed profile still verifies at its own start; currency is the caller's check.
+    let lapsed = try await ProfileRecord(verifying: owner.profile.encoding, using: backend)
+    #expect(lapsed == owner.profile && !lapsed.validity.contains(backend.now))
+    var tampered = owner.profile.encoding
+    tampered[tampered.count - 1] ^= 1
+    await #expect(throws: (any Error).self) {
+      try await ProfileRecord(verifying: tampered, using: backend)
+    }
     try await other.renew().verify(using: backend)
 
     backend.advance(by: DeviceCertificate.defaultLifetime)

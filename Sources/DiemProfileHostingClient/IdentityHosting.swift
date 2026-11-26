@@ -78,6 +78,26 @@ extension Identity where Profile: DomainNamedProfile {
     return HostingPublication(profile: next, via: target)
   }
 
+  /// Claims as `claiming(labels:at:solver:transform:)`, listing the new domains with
+  /// `Profile.content(_:replacingDomains:)`.
+  public func claiming<HTTP: HostingHTTPClient>(
+    labels: [String], at host: ProfileHostingClient<HTTP>, solver: some ProofOfWorkSolver
+  ) async throws -> HostingPublication<Profile> {
+    try await claiming(labels: labels, at: host, solver: solver) { content, domains in
+      try Profile.content(content, replacingDomains: domains)
+    }
+  }
+
+  /// Releases as `releasing(labels:at:transform:)`, listing the remaining domains with
+  /// `Profile.content(_:replacingDomains:)`.
+  public func releasing<HTTP: HostingHTTPClient>(
+    labels: [String], at host: ProfileHostingClient<HTTP>
+  ) async throws -> HostingPublication<Profile> {
+    try await releasing(labels: labels, at: host) { content, domains in
+      try Profile.content(content, replacingDomains: domains)
+    }
+  }
+
   private func hostedRevision(domains: [DomainName],
     transform: (Profile.Content, [DomainName]) throws -> Profile.Content
   ) async throws -> Profile {

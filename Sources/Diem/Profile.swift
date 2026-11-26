@@ -55,6 +55,14 @@ extension Profile {
     try self.init(record: ProfileRecord(encoding: encoding))
   }
 
+  /// Decodes a profile and verifies its certificates and signature at its own
+  /// ``validity``'s start, so a profile that has since lapsed still verifies. Callers that
+  /// need a current profile also check `validity.contains(now)`.
+  public init(verifying encoding: [UInt8], using backend: some CryptoBackend) async throws {
+    try self.init(encoding: encoding)
+    try await verify(using: backend, at: validity.notBefore)
+  }
+
   /// The canonical encoding.
   public var encoding: [UInt8] { record.encoding }
   /// The identity ID.
@@ -166,10 +174,15 @@ extension Profile {
 /// domain checks that the profile serves that domain.
 ///
 /// Domains are a standard signed field of every ``ProfileRecord``. A conforming type
-/// states how many it lists and checks them with ``validate(domains:)`` when decoding.
+/// states how many it lists, checks them with ``validate(domains:)`` when decoding, and
+/// says how its content lists other domains.
 public protocol DomainNamedProfile: Profile {
   /// How many domains a profile of this type lists.
   static var domainCount: ClosedRange<Int> { get }
+  /// `content` listing `domains` in that order, under this type's own naming rules.
+  /// Hosting operations use it to add and remove hosted names.
+  static func content(_ content: Content, replacingDomains domains: [DomainName]) throws
+    -> Content
 }
 
 extension DomainNamedProfile {
@@ -318,6 +331,14 @@ public struct ProfileRecord: DomainNamedProfile {
   public static func fields(for content: ProfileFields, over current: ProfileFields?)
     -> ProfileFields
   { content }
+  /// `content` with `domains`, keeping its other fields.
+  public static func content(_ content: ProfileFields, replacingDomains domains: [DomainName])
+    -> ProfileFields
+  {
+    var content = content
+    content.domains = domains
+    return content
+  }
 
   /// Decodes a well-formed profile from its encoding. ``verify(using:at:)`` checks its
   /// signatures and validity.

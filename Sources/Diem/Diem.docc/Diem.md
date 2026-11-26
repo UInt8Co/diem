@@ -60,9 +60,14 @@ statements without checking them; an application that checks a statement first w
 expires within a signing window.
 
 Every profile signs the ``DomainName`` list that serves it. A ``DomainNamedProfile``
-states how many domains its kind lists, and a verifier that fetched a profile from a
-domain checks that the profile serves that domain. Domains are lowercase DNS names;
-callers fold user input with `DomainName(normalizing:)`.
+states how many domains its kind lists and how its content lists other domains
+(`content(_:replacingDomains:)`), and a verifier that fetched a profile from a domain
+checks that the profile serves that domain. Domains are lowercase DNS names; callers fold
+user input with `DomainName(normalizing:)`.
+
+`init(verifying:using:)` decodes a profile and verifies its certificates and signature at
+its own `notBefore`, which accepts a profile that has since lapsed, such as one a device
+stored earlier. Callers that need a current profile check `validity.contains(now)`.
 
 An ``Identity`` supplies a device's keys and current profile. Its operations sign and
 return the next revision without storing it, so storage-backed identities adopt a

@@ -12,9 +12,7 @@ fails. Availability and ownership plans are hints; the server decides publicatio
 ```swift
 let host = ProfileHostingClient(domain: try DomainName("id.example"), http: transport)
 let solver = PortableProofOfWorkSolver()
-let claim = try await identity.claiming(labels: ["alice"], at: host, solver: solver) {
-  content, domains in ProfileFields(domains: domains, applications: content.applications)
-}
+let claim = try await identity.claiming(labels: ["alice"], at: host, solver: solver)
 // Store claim.profile durably, then publish it; retry the same bytes if unanswered.
 try await host.publish(claim, solver: solver)
 ```
@@ -36,7 +34,9 @@ it does not verify the profile's signatures or validity.
 
 `identity.claiming(labels:at:solver:transform:)` plans and solves new names, appends
 those domains to the existing list and signs the next revision with `identity.updating`.
-The transform must return content with exactly the supplied domains. It returns a
+The transform must return content with exactly the supplied domains;
+`claiming(labels:at:solver:)` and `releasing(labels:at:)` use the profile type's
+`content(_:replacingDomains:)` as the transform. It returns a
 ``HostingPublication`` and publishes nothing. Store its profile before
 ``ProfileHostingClient/publish(_:solver:)``: a host accepts only later revisions than
 the one it holds, and an identical PUT succeeds again, so an unanswered request is

@@ -29,6 +29,11 @@ private struct NoteProfile: DomainNamedProfile {
   static func fields(for content: Content) throws -> ProfileFields {
     ProfileFields(domains: [content.domain], applications: [.notes: .text(content.note)])
   }
+
+  static func content(_ content: Content, replacingDomains domains: [DomainName]) throws -> Content {
+    try validate(domains: domains)
+    return Content(domain: domains[0], note: content.note)
+  }
 }
 
 /// A profile whose content claims to own the notes field but publishes another's.

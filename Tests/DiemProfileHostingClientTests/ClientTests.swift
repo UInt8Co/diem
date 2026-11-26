@@ -9,7 +9,7 @@ import Testing
 
   func identity(_ labels: [String] = []) async throws -> TestIdentity {
     let domains = try labels.map { try DomainName($0.contains(".") ? $0 : $0 + ".id.example") }
-    return try await TestIdentity(ProfileFields(domains: domains),
+    return try await TestIdentity(ProfileFields(domains: domains, applications: [.test: .bytes([1])]),
       identityKey: .generate(.ed25519, using: backend),
       deviceKey: .generate(.ed25519, using: backend), using: backend)
   }
@@ -19,16 +19,14 @@ import Testing
     let client = ProfileHostingClient(domain: domain, http: server)
     let identity = try await identity(["external.example"])
     let solver = RecordingSolver()
-    let claim = try await identity.claiming(labels: ["bob", "alice"], at: client,
-      solver: solver) { content, domains in
-        ProfileFields(domains: domains, applications: content.applications)
-      }
+    let claim = try await identity.claiming(labels: ["bob", "alice"], at: client, solver: solver)
     #expect(await server.requests.filter { $0.method == .put }.isEmpty)
     try await client.publish(claim, solver: solver)
     let claimed = claim.profile
     #expect(claimed.revision == 2)
     #expect(identity.profile.revision == 1)
     #expect(claimed.domains.map(\.name) == ["external.example", "bob.id.example", "alice.id.example"])
+    #expect(claimed.fields.applications == identity.profile.fields.applications)
     #expect(client.labels(in: claimed) == ["bob", "alice"])
     #expect(await server.requests.filter { $0.method == .put }.count == 1)
     #expect(await solver.puzzles.map(\.label) == ["bob", "alice"])
@@ -46,14 +44,13 @@ import Testing
     #expect(await server.requests.last?.headers["Diem-Hosting-Proof"] == nil)
     let current = try await TestIdentity(profile: updated, deviceKey: identity.deviceKey,
       identityKey: identity.identityKey, using: backend)
-    let release = try await current.releasing(labels: ["bob", "alice"], at: client) { content, domains in
-      ProfileFields(domains: domains, applications: content.applications)
-    }
+    let release = try await current.releasing(labels: ["bob", "alice"], at: client)
     #expect(release.via == .name("bob") && release.proofs.isEmpty)
     try await client.publish(release, solver: solver)
     let released = release.profile
     #expect(released.revision == 4)
     #expect(released.domains.map(\.name) == ["external.example"])
+    #expect(released.fields.applications == identity.profile.fields.applications)
     #expect(await server.requests.last?.url == "https://bob.id.example/.well-known/diem/profile.cbor")
     #expect(try await client.profile(at: "bob") == nil)
     #expect(try await client.profile(at: "alice") == nil)
