@@ -9,7 +9,7 @@ import Testing
   let domain = try! DomainName("link.example")
   let secret = [UInt8](0..<16)
   let seed = try! IdentitySeed(entropy: Array(repeating: 8, count: 32))
-  let accept: (ProfileRecord) throws -> Void = { _ in }
+  let accept: (ProfileRecord, DeviceLinkGrant) throws -> Void = { _, _ in }
 
   func identity(seed: IdentitySeed? = nil, lifetime: UInt64 = ProfileRecord.defaultLifetime)
     async throws -> TestIdentity
@@ -60,7 +60,8 @@ import Testing
   }
 
   func open(_ response: [UInt8], _ recipient: EncryptionPrivateKey, _ request: DeviceLinkRequest,
-    code: DeviceLinkCode, at time: UInt64? = nil, accept: (ProfileRecord) throws -> Void = { _ in }
+    code: DeviceLinkCode, at time: UInt64? = nil,
+    accept: (ProfileRecord, DeviceLinkGrant) throws -> Void = { _, _ in }
   ) async throws -> DeviceLinkResponse.Opened<ProfileRecord> {
     try await DeviceLinkResponse.open(response, as: ProfileRecord.self, recipientKey: recipient,
       request: request, code: code, at: time, using: backend, accept: accept)
@@ -173,9 +174,9 @@ import Testing
       #expect(grant.encoding == plaintext(alice.profile, seed: sealed, applications: applications))
       let response = try await DeviceLinkResponse.seal(grant, as: ProfileRecord.self, for: request,
         code: code, using: backend, accept: accept)
-      var accepted: ProfileRecord?
-      let opened = try await open(response, recipient, request, code: code) { accepted = $0 }
-      #expect(opened.profile == alice.profile && accepted == alice.profile)
+      var accepted: (ProfileRecord, DeviceLinkGrant)?
+      let opened = try await open(response, recipient, request, code: code) { accepted = ($0, $1) }
+      #expect(opened.profile == alice.profile && accepted?.0 == alice.profile && accepted?.1 == grant)
       #expect(opened.grant.profile == alice.profile.encoding)
       #expect(opened.grant.applications == applications)
       #expect(opened.seed?.entropy == (transfer ? seed.entropy : nil))
@@ -202,14 +203,45 @@ import Testing
     await #expect(throws: DiemError.identityMismatch) { try await open(response, other, request, code: code) }
     let toOther = try await rawResponse(grant, request: request, code: code, recipient: other.publicKey)
     await #expect(throws: (any Error).self) { try await open(toOther, recipient, request, code: code) }
-    // The application's check runs on the verified profile and can refuse it.
+    // The application's check runs on the verified profile and grant and can refuse it.
     await #expect(throws: DiemError.deviceNotListed) {
-      try await open(response, recipient, request, code: code) { _ in throw DiemError.deviceNotListed }
+      try await open(response, recipient, request, code: code) { _, _ in throw DiemError.deviceNotListed }
     }
     await #expect(throws: DiemError.invalidDeviceLink) {
       try await DeviceLinkResponse.seal(DeviceLinkGrant(encoding: grant), as: ProfileRecord.self,
         for: request, code: wrongDigest, using: backend, accept: accept)
     }
+  }
+
+  @Test func acceptanceSeesTheGrantBeforeTheSeedOpens() async throws {
+    final class Opens: @unchecked Sendable { var count = 0 }
+    let (request, recipient) = try await request()
+    let opens = Opens()
+    let counting = EncryptionPrivateKey(publicKey: recipient.publicKey, protection: recipient.protection,
+      rawRepresentation: nil) { box, context in
+        opens.count += 1
+        return try await recipient.open(box, context: context)
+      }
+    let code = try code(request)
+    var alice = try await identity()
+    try await alice.add(request.device)
+    let sealed = try await seed.sealed(to: request.recipient, identity: alice.profile.identityKey, using: backend)
+    let grant = try DeviceLinkGrant(profile: alice.profile, domain: domain, seed: sealed,
+      applications: [.test: .bytes([7])])
+    let response = try await DeviceLinkResponse.seal(grant, as: ProfileRecord.self, for: request,
+      code: code, using: backend) { _, sealing in
+        #expect(sealing == grant)
+      }
+    // A refusal based on the grant's fields leaves the sealed seed unopened.
+    await #expect(throws: DiemError.invalidDeviceLink) {
+      try await open(response, counting, request, code: code) { _, grant in
+        #expect(grant.seed == sealed && grant.applications[.test] == .bytes([7]))
+        throw DiemError.invalidDeviceLink
+      }
+    }
+    #expect(opens.count == 1)
+    _ = try await open(response, counting, request, code: code)
+    #expect(opens.count == 3)
   }
 
   @Test func openingRejectsGrantsThatDoNotAuthorizeTheDevice() async throws {

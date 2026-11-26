@@ -211,7 +211,9 @@ public struct DeviceLinkContext: Hashable, Sendable {
 /// application fields.
 ///
 /// Diem neither interprets nor restricts the application fields; each application
-/// enforces its own policy for them when it accepts a grant.
+/// enforces its own policy for them in the `accept` check of
+/// ``DeviceLinkResponse/seal(_:as:for:code:using:accept:)`` and
+/// ``DeviceLinkResponse/open(_:as:recipientKey:request:code:at:using:accept:)``.
 public struct DeviceLinkGrant: Hashable, Sendable {
   /// CBOR field keys. Application fields are keyed by ``ApplicationID``.
   public static let cborKeyTag: UInt64 = 0
@@ -328,13 +330,15 @@ public enum DeviceLinkResponse {
   }
 
   /// Seals `grant` for `request`, after checking that `code` names the request and that
-  /// the grant verifies as `P` now and passes the application's `accept` check.
+  /// the grant verifies as `P` now and passes the application's `accept` check, which
+  /// receives the verified profile and the grant (its seed and application fields).
   public static func seal<P: DomainNamedProfile>(
     _ grant: DeviceLinkGrant, as type: P.Type, for request: DeviceLinkRequest,
-    code: DeviceLinkCode, using backend: some CryptoBackend, accept: (P) throws -> Void
+    code: DeviceLinkCode, using backend: some CryptoBackend,
+    accept: (P, DeviceLinkGrant) throws -> Void
   ) async throws -> [UInt8] {
     guard code.matches(request.encoding) else { throw DiemError.invalidDeviceLink }
-    try accept(try await grant.verify(as: type, for: request, using: backend))
+    try accept(try await grant.verify(as: type, for: request, using: backend), grant)
     let box = try await backend.seal(
       grant.encoding, to: request.recipient, context: DeviceLinkContext(code: code).encoding)
     let bytes = CBOR.record([
@@ -346,11 +350,12 @@ public enum DeviceLinkResponse {
 
   /// Opens a response to `request` with the recipient's key, verifies the grant as `P` at
   /// `time` (the backend's current time by default), applies the application's `accept`
-  /// check, and opens any sealed identity seed.
+  /// check to the verified profile and the grant, and only then opens any sealed identity
+  /// seed.
   public static func open<P: DomainNamedProfile>(
     _ bytes: [UInt8], as type: P.Type, recipientKey: EncryptionPrivateKey,
     request: DeviceLinkRequest, code: DeviceLinkCode, at time: UInt64? = nil,
-    using backend: some CryptoBackend, accept: (P) throws -> Void
+    using backend: some CryptoBackend, accept: (P, DeviceLinkGrant) throws -> Void
   ) async throws -> Opened<P> {
     guard bytes.count <= maximumBytes, code.matches(request.encoding) else {
       throw DiemError.invalidDeviceLink
@@ -368,7 +373,7 @@ public enum DeviceLinkResponse {
     defer { plaintext = [UInt8](repeating: 0, count: plaintext.count) }
     let grant = try DeviceLinkGrant(encoding: plaintext)
     let profile = try await grant.verify(as: type, for: request, at: time, using: backend)
-    try accept(profile)
+    try accept(profile, grant)
     let seed = try await grant.seed?.open(with: recipientKey, using: backend)
     return Opened(grant: grant, profile: profile, seed: seed)
   }

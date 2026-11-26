@@ -162,8 +162,9 @@ and verify it at the given time: its signatures and validity, that it lists the 
 domain, that it certifies the request's device in its current generation with a
 certificate valid at that time, that the new device can verify its keys' algorithms, and
 that a sealed seed belongs to its identity and the request's recipient. Applications pass
-their own acceptance rules, such as the kind of profile a device may join, as the
-`accept` closure, which runs on the verified profile before any seed is opened.
+their own acceptance rules, such as the kind of profile a device may join or which
+application fields a grant may carry without a seed, as the `accept` closure. It receives
+the verified profile and the grant, and runs before any seed is opened.
 
 ## Topics
 
