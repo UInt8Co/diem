@@ -96,7 +96,7 @@ public func hostingProofHeader(_ proofs: [String: [UInt8]]) throws(ProfileHostin
     }
     let nonce = proofs[label]!
     guard (1...64).contains(nonce.count) else { throw .invalidProof(label) }
-    entries.append(label + "=" + base64URL(nonce))
+    entries.append(label + "=" + Base64URL.encode(nonce))
   }
   return entries.joined(separator: ", ")
 }
@@ -114,7 +114,7 @@ public func hostingProofs(fromHeader header: String, limit: Int) -> [String: [UI
     guard pair.count == 2 else { return nil }
     let label = String(decoding: trimmingBlanks(pair[0]), as: UTF8.self)
     guard validWireLabel(label), proofs[label] == nil,
-      let nonce = base64URLDecoded(trimmingBlanks(pair[1])), (1...64).contains(nonce.count)
+      let nonce = Base64URL.decode(utf8: trimmingBlanks(pair[1])), (1...64).contains(nonce.count)
     else { return nil }
     proofs[label] = nonce
   }
@@ -126,48 +126,4 @@ private func trimmingBlanks(_ bytes: ArraySlice<UInt8>) -> ArraySlice<UInt8> {
   while let first = bytes.first, first == 32 || first == 9 { bytes.removeFirst() }
   while let last = bytes.last, last == 32 || last == 9 { bytes.removeLast() }
   return bytes
-}
-
-/// Unpadded base64url with zero trailing bits, so that each value has one spelling.
-func base64URLDecoded(_ text: ArraySlice<UInt8>) -> [UInt8]? {
-  guard !text.isEmpty, text.count % 4 != 1 else { return nil }
-  var output: [UInt8] = []
-  var buffer: UInt32 = 0
-  var bits = 0
-  for character in text {
-    let value: UInt8
-    switch character {
-    case 65...90: value = character - 65
-    case 97...122: value = character - 71
-    case 48...57: value = character + 4
-    case 45: value = 62
-    case 95: value = 63
-    default: return nil
-    }
-    buffer = buffer << 6 | UInt32(value)
-    bits += 6
-    if bits >= 8 {
-      bits -= 8
-      output.append(UInt8(truncatingIfNeeded: buffer >> bits))
-      buffer &= (1 << bits) - 1
-    }
-  }
-  return buffer == 0 ? output : nil
-}
-
-func base64URL(_ bytes: [UInt8]) -> String {
-  let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".utf8)
-  var output: [UInt8] = []
-  var buffer: UInt32 = 0
-  var bits = 0
-  for byte in bytes {
-    buffer = buffer << 8 | UInt32(byte)
-    bits += 8
-    while bits >= 6 {
-      bits -= 6
-      output.append(alphabet[Int((buffer >> bits) & 63)])
-    }
-  }
-  if bits > 0 { output.append(alphabet[Int((buffer << (6 - bits)) & 63)]) }
-  return String(decoding: output, as: UTF8.self)
 }

@@ -138,7 +138,7 @@ import Testing
       #expect(response.status == .ok)
       let result = try JSONDecoder().decode(Published.self, from: Data(response.body.readableBytesView))
       #expect(result.domains == ["alice.id.example", "bob.id.example"])
-      #expect(result.identity == base64URL(alice.id.bytes))
+      #expect(result.identity == Base64URL.encode(alice.id.bytes))
       for host in ["alice.id.example", "BOB.ID.EXAMPLE:443"] {
         for path in [Self.path, Self.legacy] {
           let get = try await client.execute(uri: path, method: .get, headers: [HTTPField.Name("x-test-authority")!: host])
@@ -259,7 +259,7 @@ import Testing
     let insufficientNonce = try #require((0...255).map { [UInt8($0)] }.first {
       !c.proofOfWork.isValid(nonce: $0, domain: c.domain, label: "alice", identityID: alice.id)
     })
-    let insufficientProof = "alice=" + base64URL(insufficientNonce) + ", " + proof.split(separator: ",")[1]
+    let insufficientProof = "alice=" + Base64URL.encode(insufficientNonce) + ", " + proof.split(separator: ",")[1]
     let bobProof = try hostingProofHeader(["bob": await solve(c, "bob", bob.id)])
     try await withHost(c, clock: clock) { (client: any TestClientProtocol) async throws in
       let missing = try await put(client, first)

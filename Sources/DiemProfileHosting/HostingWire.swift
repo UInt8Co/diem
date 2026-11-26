@@ -83,7 +83,7 @@ public enum HostingResponses {
   }
 
   public static func published(identity: Data, revision: UInt64, domains: [String]) throws -> Response {
-    try HostingJSON.response(HostingJSON.Published(identity: base64URL(identity), revision: revision,
+    try HostingJSON.response(HostingJSON.Published(identity: Base64URL.encode(identity), revision: revision,
       domains: domains))
   }
 }
@@ -119,10 +119,5 @@ func parseProof(_ header: String?, limit: Int, allowApex: Bool = false) -> [Stri
     allowApex || proofs["@"] == nil
   else { return nil }
   return proofs
-}
-
-func base64URL(_ bytes: some Sequence<UInt8>) -> String {
-  Data(bytes).base64EncodedString().replacingOccurrences(of: "+", with: "-")
-    .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
 }
 #endif

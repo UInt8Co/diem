@@ -141,6 +141,7 @@ for hardware stores such as Secure Enclave.
 ### Encoding
 
 - ``CBOR``
+- ``Base64URL``
 - ``Digest``
 - ``SHA2``
 - ``Validity``

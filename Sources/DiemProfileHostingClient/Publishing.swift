@@ -132,7 +132,7 @@ extension ProfileHostingClient {
   {
     try requireSuccess(response)
     let fields = try JSON(response.body).object()
-    guard try fields.field("identity").string() == base64URL(profile.id.bytes),
+    guard try fields.field("identity").string() == Base64URL.encode(profile.id.bytes),
       try fields.field("revision").unsigned() == profile.revision
     else { throw .publishedMismatch }
     // Require the Published schema, but leave claim ordering to the host.
