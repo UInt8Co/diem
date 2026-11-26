@@ -1,0 +1,128 @@
+name: Web runtime
+
+on:
+  push:
+    branches: [main]
+    paths: ['Web/**', 'Sources/Diem/**', 'Sources/DiemProfileHostingClient/**', 'Tests/Vectors/**', 'Package.swift', '.github/workflows/web-release.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: swift:6.4.0-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trust checkout for container build steps
+        # checkout's safe.directory entry is in its temporary Git config.
+        # The build also reads Git metadata from the runner-owned mount.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.11.1'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.16.0'
+      - name: Install Swift SDK for WebAssembly
+        run: >-
+          swift sdk install
+          https://download.swift.org/swift-6.4.0-release/wasm-sdk/swift-6.4.0-RELEASE/swift-6.4.0-RELEASE_wasm.artifactbundle.tar.gz
+          --checksum f07b7be3c586d92d7a07051fc6d303b87ebea67eadc40640ba59d5a8b79aa86d
+      - name: Install pinned optimizer
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl
+          curl --fail --location --retry 3 https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
+          echo '2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489  /tmp/binaryen.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/binaryen.tar.gz -C /tmp
+          echo '/tmp/binaryen-version_133/bin' >> "$GITHUB_PATH"
+      - name: Install web build dependencies
+        run: pnpm --dir Web install --frozen-lockfile
+      - name: Compile BridgeJS and minimize release
+        run: pnpm --dir Web build
+      - name: Install browser
+        run: pnpm --dir Web exec playwright install --with-deps chromium
+      - name: Verify minimized package in Chromium windows and workers
+        run: pnpm --dir Web test chromium
+      - name: Package release
+        shell: bash
+        run: |
+          cd Web/dist
+          sha256sum -c SHA256SUMS
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -czf ../diem-web.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diem-web
+          path: |
+            Web/dist/*
+            Web/diem-web.tar.gz
+          if-no-files-found: error
+
+  webkit:
+    name: Safari WebKit
+    needs: build
+    # Exercise Safari's Cocoa crypto backend. Linux WebKit's libgcrypt backend
+    # intermittently rejects Ed25519 key generation when it drops leading zeros.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.11.1'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.16.0'
+      - uses: actions/download-artifact@v4
+        with:
+          name: diem-web
+          path: Web
+      - name: Verify the Linux-built package
+        working-directory: Web/dist
+        run: shasum -a 256 -c SHA256SUMS
+      - name: Install browser test dependencies
+        run: pnpm --dir Web install --frozen-lockfile
+      - name: Install WebKit
+        run: pnpm --dir Web exec playwright install webkit
+      - name: Verify minimized package in WebKit windows and workers
+        run: pnpm --dir Web test webkit
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build, webkit]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: diem-web
+          path: artifact
+      - name: Determine release tag
+        id: release
+        shell: bash
+        run: |
+          # Commit time keeps the tag stable when a run is retried on another day.
+          commit_time=$(git show -s --format=%ct "$GITHUB_SHA")
+          release_date=$(date -u -d "@$commit_time" +%Y%m%d)
+          echo "tag=web-$release_date-${GITHUB_SHA:0:4}" >> "$GITHUB_OUTPUT"
+      - name: Publish tested JS, WASM, declarations and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          cat > /tmp/release-notes.md <<'NOTES'
+          Prebuilt Diem web runtime, generated with BridgeJS and minimized with Binaryen.
+          Tested in Window, DedicatedWorker and SharedWorker. Download the archive or all
+          matching JS/WASM/type files together; verify SHA256SUMS. See README.md for use,
+          compression, custody boundaries and build details.
+          NOTES
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file /tmp/release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" artifact/dist/* artifact/diem-web.tar.gz --clobber

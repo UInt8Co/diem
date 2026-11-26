@@ -11,3 +11,7 @@ Android/.gradle/
 Android/build/
 Android/local.properties
 !/dist/index.html
+.swiftpm/configuration/mirrors.json
+Web/node_modules
+Web/.build-embedded
+Web/dist

@@ -1,0 +1,75 @@
+import {createServer} from 'node:http';
+import {readFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {chromium, webkit} from '@playwright/test';
+import assert from 'node:assert/strict';
+const supported = [chromium, webkit];
+const requested = process.argv.slice(2);
+const engines = requested.length ? requested.map(name => {
+  const engine = supported.find(engine => engine.name() === name);
+  if(!engine) throw new Error(`Unknown browser "${name}". Use chromium or webkit.`);
+  return engine;
+}) : supported;
+const web = fileURLToPath(new URL('.', import.meta.url));
+const server = createServer(async(req, res) => {
+  try {
+    const path = new URL(req.url, 'http://localhost').pathname;
+    if(path.startsWith('/hosting/')) {
+      if(path === '/hosting/redirect') { res.writeHead(302, {Location: '/hosting/privacy'}); res.end(); }
+      else if(path === '/hosting/large') { res.writeHead(200, {'Content-Length': '262145'}); res.end(Buffer.alloc(262145)); }
+      else if(path === '/hosting/stream') { res.writeHead(200); res.write(Buffer.alloc(131072)); res.end(Buffer.alloc(131073)); }
+      else if(path === '/hosting/body-hang') { res.writeHead(200); res.write('x'); }
+      else if(path === '/hosting/privacy') res.end(JSON.stringify({cookie: req.headers.cookie, referer: req.headers.referer}));
+      return;
+    }
+    if(/^\/vectors\/[a-z0-9-]+\.json$/.test(path)) {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(await readFile(`${web}../Tests/Vectors/${path.slice('/vectors/'.length)}`)); return;
+    }
+    if(!/^\/(dist|tests)\/[a-zA-Z0-9.-]+$/.test(path)) {
+      res.setHeader('Content-Type', 'text/html'); res.setHeader('Set-Cookie', 'hosting-test=present; SameSite=Strict'); res.end('<!doctype html><title>Diem web test</title>'); return;
+    }
+    res.setHeader('Content-Type', path.endsWith('.wasm') ? 'application/wasm' : 'text/javascript');
+    res.end(await readFile(web + path));
+  } catch { res.writeHead(404); res.end(); }
+});
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+let browser;
+try {
+  for(const engine of engines) {
+    browser = await engine.launch({headless: true, executablePath: process.env.DIEM_BROWSER_EXECUTABLE,
+      ...(engine === chromium ? {args: ['--no-sandbox']} : {})});
+    const page = await browser.newPage();
+    page.on('pageerror', error => console.error(error));
+    await page.goto(`http://127.0.0.1:${server.address().port}`);
+    const windowResult = await page.evaluate(async engine => Promise.race([
+      (await import('/tests/scenario.js')).run({engine, realm: 'Window'}).catch(error => ({error: `${error.name}: ${error.message}\n${error.stack}`})),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Window test timed out')), 30_000))
+    ]), engine.name());
+    if(windowResult.error) throw new Error(windowResult.error);
+    assert.equal(windowResult.realm, 'window');
+    console.log(`PASS ${engine.name()} profiles/hosting/custody Window`);
+    for(const shared of [false, true]) {
+      const result = await page.evaluate(({shared, engine}) => new Promise((resolve, reject) => {
+        const worker = shared ? new SharedWorker('/tests/worker.js', {type: 'module'}) : new Worker('/tests/worker.js', {type: 'module'});
+        const port = shared ? worker.port : worker;
+        const timer = setTimeout(() => reject(new Error('Worker timed out')), 30_000);
+        const cleanup = () => { clearTimeout(timer); if(shared) port.close(); else worker.terminate(); };
+        worker.onerror = event => { cleanup(); reject(new Error(event.message)); };
+        port.onmessage = event => { cleanup(); event.data.error ? reject(new Error(event.data.error)) : resolve(event.data.result); };
+        if(shared) port.start();
+        port.postMessage({engine});
+      }), {shared, engine: engine.name()});
+      assert.equal(result.realm, 'worker');
+      console.log(`PASS ${engine.name()} profiles/hosting/custody ${shared ? 'SharedWorker' : 'DedicatedWorker'}`);
+    }
+    const persistence = engine === webkit ? 'IndexedDB persistence in Window and DedicatedWorker, SharedWorker DataCloneError canary and in-memory custody' : 'IndexedDB persistence in all realms';
+    console.log(`PASS ${engine.name()} Window, DedicatedWorker and SharedWorker: profile verification of Diem's vectors and independently signed profiles, lapse reporting and application fields, profile hosting, PoW, cancellation and transport bounds, seed custody and recovery, non-extractable P-256 signing, ${persistence}, device-link round trips and rejection.`);
+    await (await import('./tests/device-link-runner.mjs')).runDeviceLinkTests(page, engine.name());
+    await browser.close(); browser = undefined;
+  }
+} finally {
+  await browser?.close();
+  server.closeAllConnections();
+  await new Promise(resolve => server.close(resolve));
+}

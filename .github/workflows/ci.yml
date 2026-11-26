@@ -37,6 +37,44 @@ jobs:
           deno run --allow-read Scripts/verify-vectors.ts
           deno run --allow-read --allow-run --allow-write Scripts/verify-hpke-vectors.ts
 
+  # The release workflow also checks WebKit and publishes; this job gates pull requests.
+  web:
+    name: Web runtime
+    runs-on: ubuntu-24.04
+    container: swift:6.4.0-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trust checkout for container build steps
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.11.1'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.16.0'
+      - name: Install Swift SDK for WebAssembly
+        run: >-
+          swift sdk install
+          https://download.swift.org/swift-6.4.0-release/wasm-sdk/swift-6.4.0-RELEASE/swift-6.4.0-RELEASE_wasm.artifactbundle.tar.gz
+          --checksum f07b7be3c586d92d7a07051fc6d303b87ebea67eadc40640ba59d5a8b79aa86d
+      - name: Install pinned optimizer
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl
+          curl --fail --location --retry 3 https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
+          echo '2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489  /tmp/binaryen.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/binaryen.tar.gz -C /tmp
+          echo '/tmp/binaryen-version_133/bin' >> "$GITHUB_PATH"
+      - name: Install web build dependencies
+        run: pnpm --dir Web install --frozen-lockfile
+      - name: Build the standalone runtime
+        run: pnpm --dir Web build
+      - name: Install browser
+        run: pnpm --dir Web exec playwright install --with-deps chromium
+      - name: Test in Chromium windows and workers
+        run: pnpm --dir Web test chromium
+
   # The server trait adds Hummingbird, Fluent and SwiftNIO; the job above proves the
   # default graph builds without them.
   profile-hosting-server:
