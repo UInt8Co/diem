@@ -64,16 +64,42 @@ import Testing
 }
 
 @Suite struct RecordEncodingTests {
-  @Test func recordsRequireIntegerKeysAndRequiredFields() throws {
-    let value = CBOR.record([0: .text("record"), 1: .unsigned(1), 100: .bool(true)])
-    #expect(try value.recordValue(requiredKeys: 0..<2)[100] == .bool(true))
+  @Test func recordsKeyFieldsByIntegerOrApplicationID() throws {
+    let notes = try ApplicationID("org.example.notes")
+    let value = CBOR.record([0: .text("record"), 1: .unsigned(1), 100: .bool(true)],
+      applications: [notes: .text("note")])
+    let applicationEntry: [UInt8] = [0x71] + Array("org.example.notes".utf8) + [0x64] + Array("note".utf8)
+    #expect(Array(value.encoded.suffix(23)) == applicationEntry)
+    let record = try value.recordValue(requiredKeys: 0..<2)
+    #expect(record[100] == .bool(true) && record[notes] == .text("note"))
+    #expect(record.value == value)
+    #expect(try value.recordValue(tag: .text("record"), version: 1, requiredKeys: 0..<2) == record)
+    #expect(throws: DiemError.invalidEncoding) {
+      try value.recordValue(tag: .text("record"), version: 2, requiredKeys: 0..<2)
+    }
     #expect(throws: DiemError.invalidEncoding) { try value.recordValue(requiredKeys: 0..<3) }
-    #expect(throws: DiemError.invalidEncoding) {
-      try CBOR.map([.text("0"): .unsigned(1)]).recordValue(requiredKeys: 0..<1)
+    let retained = record.extensions(above: 1)
+    #expect(retained == CBOR.Record(fields: [100: .bool(true)], applications: [notes: .text("note")]))
+    #expect(CBOR.record([0: .text("record"), 1: .unsigned(1)], retaining: retained) == value)
+    // Keys are unsigned integers or application IDs; nothing else.
+    for key: CBOR in [.text("0"), .text("notes"), .text("Org.example"), .negative(-1), .bytes([0]), .null] {
+      #expect(throws: DiemError.invalidEncoding) {
+        try CBOR.map([key: .unsigned(1)]).recordValue(requiredKeys: 0..<0)
+      }
     }
-    #expect(throws: DiemError.invalidEncoding) {
-      try CBOR.map([.negative(-1): .unsigned(1)]).recordValue(requiredKeys: 0..<0)
+  }
+
+  @Test func applicationIDsAreReverseDNSNames() throws {
+    for name in ["com.blahim", "org.example.notes", "a.b", "x1.y-2.z3"] {
+      #expect(try ApplicationID(name).name == name)
     }
+    for name in ["", "com", "Com.example", "1com.example", "-com.example", "com..example",
+      "com.example.", "com.-example", "com.example-", "com.ex_ample", "com.exämple",
+      "com." + String(repeating: "a", count: 64),
+      String(repeating: "a.", count: 126) + "ab"] {
+      #expect(throws: DiemError.invalidEncoding) { try ApplicationID(name) }
+    }
+    #expect(try ApplicationID("com.b") < ApplicationID("com.blahim"))
   }
 
   @Test func publicKeyExtensionsRetainTheirIdentity() throws {
@@ -81,7 +107,8 @@ import Testing
       rawRepresentation: [UInt8](repeating: 7, count: 32))
     var fields = try CBOR(decoding: key.encoding).recordValue(requiredKeys: 0..<5)
     fields[100] = .text("future")
-    let encoding = CBOR.record(fields).encoded
+    fields[ApplicationID.test] = .text("annotation")
+    let encoding = fields.value.encoded
     let decoded = try PublicKey(encoding: encoding)
     #expect(decoded.encoding == encoding)
     #expect(decoded.id == Digest(hashing: encoding))
@@ -93,7 +120,8 @@ import Testing
     let identity = try await TestIdentity(.data([]), using: backend)
     var fields = try CBOR(decoding: identity.profile.encoding).recordValue(requiredKeys: 0..<5)
     fields[100] = .text("future")
-    let encoded = CBOR.record(fields).encoded
+    fields[ApplicationID.test] = .text("annotation")
+    let encoded = fields.value.encoded
     let profile = try ProfileRecord(encoding: encoded)
     try await profile.verify(using: backend)
     #expect(profile.encoding == encoded)

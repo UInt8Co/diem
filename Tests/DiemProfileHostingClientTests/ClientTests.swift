@@ -21,7 +21,7 @@ import Testing
     let solver = RecordingSolver()
     let claim = try await identity.claiming(labels: ["bob", "alice"], at: client,
       solver: solver) { content, domains in
-        ProfileFields(domains: domains, application: content.application)
+        ProfileFields(domains: domains, applications: content.applications)
       }
     #expect(await server.requests.filter { $0.method == .put }.isEmpty)
     try await client.publish(claim, solver: solver)
@@ -47,7 +47,7 @@ import Testing
     let current = try await TestIdentity(profile: updated, deviceKey: identity.deviceKey,
       identityKey: identity.identityKey, using: backend)
     let release = try await current.releasing(labels: ["bob", "alice"], at: client) { content, domains in
-      ProfileFields(domains: domains, application: content.application)
+      ProfileFields(domains: domains, applications: content.applications)
     }
     #expect(release.via == .name("bob") && release.proofs.isEmpty)
     try await client.publish(release, solver: solver)

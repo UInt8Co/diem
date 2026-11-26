@@ -42,7 +42,7 @@ public struct PublicKey: Hashable, Sendable {
   public let purpose: Purpose
   public let algorithm: Algorithm
   public let rawRepresentation: [UInt8]
-  private var extensionFields: [UInt64: CBOR] = [:]
+  private var extensionFields = CBOR.Record()
 
   /// A key for `purpose` of `algorithm` with raw public key bytes.
   public init(purpose: Purpose, algorithm: Algorithm, rawRepresentation: [UInt8])
@@ -63,13 +63,11 @@ public struct PublicKey: Hashable, Sendable {
 
   /// Decodes a key from its ``encoding``.
   public init(encoding: [UInt8]) throws(DiemError) {
-    let (purposeCode, code, raw) = try KeyEncoding.decode(encoding)
+    let (purposeCode, code, raw, extensions) = try KeyEncoding.decode(encoding)
     guard let purpose = Purpose(rawValue: purposeCode), let algorithm = Algorithm(rawValue: code)
     else { throw .invalidKey }
     try self.init(purpose: purpose, algorithm: algorithm, rawRepresentation: raw)
-    extensionFields = try CBOR(decoding: encoding).recordValue(
-      requiredKeys: Self.cborKeyTag..<(Self.cborKeyRawRepresentation + 1)
-    ).filter { $0.key > Self.cborKeyRawRepresentation }
+    extensionFields = extensions
   }
 
   /// The purpose- and algorithm-qualified canonical encoding.
@@ -133,7 +131,7 @@ public struct EncryptionPublicKey: Hashable, Sendable {
 
   public let algorithm: Algorithm
   public let rawRepresentation: [UInt8]
-  private var extensionFields: [UInt64: CBOR] = [:]
+  private var extensionFields = CBOR.Record()
 
   /// A key of `algorithm` with raw public key bytes.
   public init(algorithm: Algorithm, rawRepresentation: [UInt8]) throws(DiemError) {
@@ -151,13 +149,11 @@ public struct EncryptionPublicKey: Hashable, Sendable {
 
   /// Decodes a key from its ``encoding``.
   public init(encoding: [UInt8]) throws(DiemError) {
-    let (purpose, code, raw) = try KeyEncoding.decode(encoding)
+    let (purpose, code, raw, extensions) = try KeyEncoding.decode(encoding)
     guard purpose == KeyEncoding.encryptionPurpose, let algorithm = Algorithm(rawValue: code)
     else { throw .invalidKey }
     try self.init(algorithm: algorithm, rawRepresentation: raw)
-    extensionFields = try CBOR(decoding: encoding).recordValue(
-      requiredKeys: Self.cborKeyTag..<(Self.cborKeyRawRepresentation + 1)
-    ).filter { $0.key > Self.cborKeyRawRepresentation }
+    extensionFields = extensions
   }
 
   /// The purpose- and algorithm-qualified canonical encoding.
@@ -211,7 +207,7 @@ enum KeyEncoding {
   static let encryptionPurpose: UInt64 = 3
 
   static func encode(
-    _ purpose: UInt64, _ algorithm: UInt64, _ raw: [UInt8], extensions: [UInt64: CBOR]
+    _ purpose: UInt64, _ algorithm: UInt64, _ raw: [UInt8], extensions: CBOR.Record
   ) -> [UInt8] {
     CBOR.record(
       [
@@ -219,11 +215,14 @@ enum KeyEncoding {
         PublicKey.cborKeyPurpose: .unsigned(purpose),
         PublicKey.cborKeyAlgorithm: .unsigned(algorithm),
         PublicKey.cborKeyRawRepresentation: .bytes(raw),
-      ], extensions: extensions
+      ], retaining: extensions
     ).encoded
   }
 
-  static func decode(_ encoding: [UInt8]) throws(DiemError) -> (UInt64, UInt64, [UInt8]) {
+  /// The purpose, algorithm, raw key and retained extensions of a key record.
+  static func decode(_ encoding: [UInt8]) throws(DiemError)
+    -> (UInt64, UInt64, [UInt8], CBOR.Record)
+  {
     let a = try CBOR(decoding: encoding).recordValue(
       requiredKeys: PublicKey.cborKeyTag..<(PublicKey.cborKeyRawRepresentation + 1))
     guard a[PublicKey.cborKeyTag]! == .text("Diem/key"),
@@ -231,7 +230,8 @@ enum KeyEncoding {
     else { throw .invalidKey }
     return try (
       a[PublicKey.cborKeyPurpose]!.unsignedValue(), a[PublicKey.cborKeyAlgorithm]!.unsignedValue(),
-      a[PublicKey.cborKeyRawRepresentation]!.bytesValue()
+      a[PublicKey.cborKeyRawRepresentation]!.bytesValue(),
+      a.extensions(above: PublicKey.cborKeyRawRepresentation)
     )
   }
 }

@@ -27,9 +27,8 @@ public struct DeviceCertificate: Hashable, Sendable {
   /// Decodes a certificate from the identity's signed message.
   public init(_ signedMessage: SignedMessage) throws(DiemError) {
     let a = try CBOR(decoding: signedMessage.message).recordValue(
+      tag: .text("Diem/device"), version: 3,
       requiredKeys: Self.cborKeyTag..<(Self.cborKeyExpiresAt + 1))
-    guard a[Self.cborKeyTag]! == .text("Diem/device"), a[Self.cborKeyVersion]! == .unsigned(3)
-    else { throw .invalidEncoding }
     identityID = try Digest(bytes: a[Self.cborKeyIdentityID]!.bytesValue())
     generation = try a[Self.cborKeyGeneration]!.unsignedValue()
     guard generation > 0, generation <= UInt64(Int64.max) else { throw .invalidEncoding }

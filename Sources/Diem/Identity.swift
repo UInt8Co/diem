@@ -23,18 +23,22 @@ extension Identity {
   /// The identity ID.
   public var id: Digest { profile.id }
 
-  /// The next revision, publishing `content`. With the identity key, expired device
+  /// The next revision, publishing `content` as `fields(for:over:)` over the current
+  /// fields, so other applications' fields are kept. With the identity key, expired device
   /// certificates are reissued first.
   public func updating(_ content: Profile.Content) async throws -> Profile {
     var devices = profile.devices
     if identityKey != nil, devices.contains(where: { !$0.validity.contains(backend.now) }) {
       devices = try await certify(devices.map { $0.device }, generation: profile.generation)
     }
-    return try await publish(devices: devices, fields: Profile.fields(for: content))
+    return try await publish(
+      devices: devices, fields: Profile.fields(for: content, over: profile.record.fields))
   }
 
   /// The next revision, publishing the current fields with a fresh validity. With the
-  /// identity key, every device certificate is also reissued.
+  /// identity key, every device certificate is also reissued. This and the device-set
+  /// operations re-sign every current field, including other applications' fields and Diem
+  /// fields this version does not know.
   public func renewing() async throws -> Profile {
     var devices = profile.devices
     if identityKey != nil {
@@ -62,11 +66,6 @@ extension Identity {
     let keys = profile.devices.map { $0.device }.filter { $0.id != id }
     let devices = try await certify(keys, generation: profile.generation + 1)
     return try await publish(devices: devices, fields: profile.record.fields)
-  }
-
-  /// A proof of `data` by this device for this identity.
-  public func prove(_ data: [UInt8]) async throws -> ProofRecord {
-    try await ProofRecord.sign(data, identityID: id, by: deviceKey)
   }
 
   private func certify(_ keys: [DevicePublicKey], generation: UInt64) async throws

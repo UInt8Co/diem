@@ -82,7 +82,7 @@ extension Identity where Profile: DomainNamedProfile {
     transform: (Profile.Content, [DomainName]) throws -> Profile.Content
   ) async throws -> Profile {
     let content = try transform(profile.content, domains)
-    guard try Profile.fields(for: content).domains == domains else {
+    guard try Profile.fields(for: content, over: profile.record.fields).domains == domains else {
       throw ProfileHostingError.domainsMismatch
     }
     let next = try await updating(content)

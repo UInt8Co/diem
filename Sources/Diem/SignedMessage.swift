@@ -4,7 +4,7 @@ public struct SignedMessage: Hashable, Sendable {
   public static let cborKeyMessage: UInt64 = 0
   public static let cborKeySignature: UInt64 = 1
 
-  private var extensionFields: [UInt64: CBOR] = [:]
+  private var extensionFields = CBOR.Record()
 
   public let message: [UInt8]
   public let signature: [UInt8]
@@ -26,14 +26,14 @@ public struct SignedMessage: Hashable, Sendable {
     try self.init(
       message: a[Self.cborKeyMessage]!.bytesValue(),
       signature: a[Self.cborKeySignature]!.bytesValue())
-    extensionFields = a.filter { $0.key > Self.cborKeySignature }
+    extensionFields = a.extensions(above: Self.cborKeySignature)
   }
 
   /// The canonical encoding.
   public var encoding: [UInt8] {
     CBOR.record(
       [Self.cborKeyMessage: .bytes(message), Self.cborKeySignature: .bytes(signature)],
-      extensions: extensionFields
+      retaining: extensionFields
     ).encoded
   }
 

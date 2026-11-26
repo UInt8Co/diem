@@ -75,23 +75,87 @@ public indirect enum CBOR: Hashable, Sendable {
     return value
   }
 
-  /// An extensible record with unsigned integer keys. Required fields must be present;
-  /// unknown integer keys are retained so callers can preserve the original record.
-  public func recordValue(requiredKeys: Range<UInt64>) throws(DiemError) -> [UInt64: CBOR] {
-    let entries = try mapValue()
-    var fields: [UInt64: CBOR] = [:]
-    for (key, value) in entries {
-      fields[try key.unsignedValue()] = value
+  /// The record this map holds. Required integer keys must be present. Text keys must be
+  /// valid ``ApplicationID``s; any other key type is ``DiemError/invalidEncoding``. Unknown
+  /// integer keys and every application field are kept, so callers can re-encode them.
+  public func recordValue(requiredKeys: Range<UInt64>) throws(DiemError) -> Record {
+    var record = Record()
+    for (key, value) in try mapValue() {
+      switch key {
+      case .unsigned(let number): record.fields[number] = value
+      case .text(let name): record.applications[try ApplicationID(name)] = value
+      default: throw .invalidEncoding
+      }
     }
-    guard requiredKeys.allSatisfy({ fields[$0] != nil }) else { throw .invalidEncoding }
-    return fields
+    guard requiredKeys.allSatisfy({ record.fields[$0] != nil }) else { throw .invalidEncoding }
+    return record
   }
 
-  /// Encodes a record, retaining unrecognized fields from a decoded record.
-  /// Explicit fields take precedence over extensions.
-  public static func record(_ fields: [UInt64: CBOR], extensions: [UInt64: CBOR] = [:]) -> CBOR {
-    .map(Dictionary(uniqueKeysWithValues: extensions.merging(fields) { _, known in known }
-      .map { (.unsigned($0.key), $0.value) }))
+  /// A record whose key 0 is `tag` and key 1 is `version`, as ``recordValue(requiredKeys:)``.
+  public func recordValue(tag: CBOR, version: UInt64, requiredKeys: Range<UInt64>)
+    throws(DiemError) -> Record
+  {
+    let record = try recordValue(requiredKeys: requiredKeys)
+    guard record.fields[Record.keyTag] == tag, record.fields[Record.keyVersion] == .unsigned(version)
+    else { throw .invalidEncoding }
+    return record
+  }
+
+  /// Encodes a record. Explicit `fields` take precedence over `extensions`, which retain
+  /// unrecognized integer fields of a decoded record; `applications` are keyed by name.
+  public static func record(
+    _ fields: [UInt64: CBOR], applications: [ApplicationID: CBOR] = [:],
+    extensions: [UInt64: CBOR] = [:]
+  ) -> CBOR {
+    var entries: [CBOR: CBOR] = [:]
+    for (key, value) in extensions { entries[.unsigned(key)] = value }
+    for (key, value) in fields { entries[.unsigned(key)] = value }
+    for (id, value) in applications { entries[.text(id.name)] = value }
+    return .map(entries)
+  }
+
+  /// Encodes `fields`, retaining a decoded record's ``Record/extensions(above:)``.
+  /// Explicit fields take precedence.
+  public static func record(_ fields: [UInt64: CBOR], retaining extensions: Record) -> CBOR {
+    record(fields, applications: extensions.applications, extensions: extensions.fields)
+  }
+
+  /// A Diem record: a map whose keys are Diem's unsigned integers or applications' IDs.
+  public struct Record: Hashable, Sendable {
+    /// The conventional keys of a record's tag and version.
+    public static let keyTag: UInt64 = 0
+    public static let keyVersion: UInt64 = 1
+
+    /// Fields under Diem's integer keys.
+    public var fields: [UInt64: CBOR]
+    /// Fields under application IDs.
+    public var applications: [ApplicationID: CBOR]
+
+    public init(fields: [UInt64: CBOR] = [:], applications: [ApplicationID: CBOR] = [:]) {
+      self.fields = fields
+      self.applications = applications
+    }
+
+    /// The field at integer `key`.
+    public subscript(key: UInt64) -> CBOR? {
+      get { fields[key] }
+      set { fields[key] = newValue }
+    }
+
+    /// The field of `application`.
+    public subscript(application: ApplicationID) -> CBOR? {
+      get { applications[application] }
+      set { applications[application] = newValue }
+    }
+
+    /// The integer fields above `key` and every application field: what a decoder that
+    /// knows keys up to `key` retains for re-encoding.
+    public func extensions(above key: UInt64) -> Record {
+      Record(fields: fields.filter { $0.key > key }, applications: applications)
+    }
+
+    /// The record as a CBOR map.
+    public var value: CBOR { CBOR.record(fields, applications: applications) }
   }
 
   private func append(to output: inout [UInt8]) {

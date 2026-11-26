@@ -101,7 +101,7 @@ import Testing
     var fields = try CBOR(decoding: old.encoding).recordValue(requiredKeys: 0..<5)
     fields[ProfileRecord.cborKeyContent] = .bytes(SignedMessage(
       message: old.record.signedContent.message, signature: signature).encoding)
-    let unverified = try ProfileRecord(encoding: CBOR.record(fields).encoded)
+    let unverified = try ProfileRecord(encoding: fields.value.encoded)
     await #expect(throws: DiemError.invalidSignature) {
       try await unverified.enrolling(fresh, identityKey: root, using: backend)
     }

@@ -1,13 +1,18 @@
 /// An identity's public statement: a signed ``ProfileRecord`` and the application
 /// ``Content`` it carries.
 ///
-/// A conforming type decodes and validates its content from a record and says which
-/// ``ProfileFields`` publish new content. Keys, devices, revisions, encoding and
-/// verification have default implementations. ``ProfileRecord`` is the default profile,
-/// whose content is its fields, uninterpreted.
+/// A conforming type decodes and validates its content from a record, names the
+/// ``applications`` whose fields that content owns, and says which ``ProfileFields``
+/// publish new content. Keys, devices, revisions, encoding and verification have default
+/// implementations. ``ProfileRecord`` is the default profile, whose content is its fields,
+/// uninterpreted.
 public protocol Profile: Hashable, Sendable {
   /// The application's view of the signed fields.
   associatedtype Content: Hashable, Sendable
+
+  /// The application fields that ``Content`` owns. Publishing content replaces these
+  /// fields and keeps every other application's.
+  static var applications: Set<ApplicationID> { get }
 
   /// The signed record.
   var record: ProfileRecord { get }
@@ -17,11 +22,34 @@ public protocol Profile: Hashable, Sendable {
   /// Decodes and validates the content of a well-formed record. ``verify(using:at:)``
   /// checks its signatures and validity.
   init(record: ProfileRecord) throws
-  /// The signed fields that publish `content`.
+  /// The domains and owned application fields that publish `content`.
   static func fields(for content: Content) throws -> ProfileFields
+  /// The complete signed fields that publish `content` over the `current` revision's.
+  ///
+  /// The default takes `current` (or no fields), replaces its domains, and sets or removes
+  /// each field of ``applications`` from ``fields(for:)``. Other applications' fields and
+  /// Diem fields this version does not know are kept verbatim. It throws
+  /// ``DiemError/invalidEncoding`` if ``fields(for:)`` returns a field of an application
+  /// outside ``applications``.
+  static func fields(for content: Content, over current: ProfileFields?) throws -> ProfileFields
 }
 
 extension Profile {
+  public static func fields(for content: Content, over current: ProfileFields?) throws
+    -> ProfileFields
+  {
+    let published = try fields(for: content)
+    guard published.applications.keys.allSatisfy(applications.contains) else {
+      throw DiemError.invalidEncoding
+    }
+    var fields = current ?? ProfileFields()
+    fields.domains = published.domains
+    for application in applications {
+      fields.applications[application] = published.applications[application]
+    }
+    return fields
+  }
+
   /// Decodes a well-formed profile from its ``encoding``.
   public init(encoding: [UInt8]) throws {
     try self.init(record: ProfileRecord(encoding: encoding))
@@ -82,13 +110,14 @@ extension Profile {
       identityKey: identityKey.publicKey, devices: [certificate], by: deviceKey, revision: 1,
       previousDigest: nil,
       validity: ProfileRecord.contentValidity(for: certificate, at: now, lifetime: profileLifetime),
-      fields: Self.fields(for: content)))
+      fields: Self.fields(for: content, over: nil)))
   }
 
   /// The next revision, certifying `device` with a recovered identity key and signed by
   /// it. Removes `removedDevices` in the same revision, reissuing the final device set
   /// in a new generation when any are removed. The signing device cannot be removed.
-  /// Publishes `content` if supplied, otherwise preserves the current fields.
+  /// Publishes `content` if supplied, as `fields(for:over:)` over the current fields;
+  /// otherwise preserves the current fields.
   ///
   /// The caller fetches this latest trusted profile and checks its monotonic version
   /// before recovery, then durably stores and publishes the result before using the
@@ -120,7 +149,7 @@ extension Profile {
     let validity = try Validity(starting: now, lifetime: deviceLifetime)
     let contentValidity = try Validity(starting: now, lifetime: profileLifetime)
     guard contentValidity.expiresAt <= validity.expiresAt else { throw DiemError.invalidValidity }
-    let fields = try content.map { try Self.fields(for: $0) } ?? record.fields
+    let fields = try content.map { try Self.fields(for: $0, over: record.fields) } ?? record.fields
     var certificates: [DeviceCertificate] = []
     for key in keys {
       certificates.append(try await DeviceCertificate.issue(
@@ -162,62 +191,69 @@ extension DomainNamedProfile {
 }
 
 /// The fields a profile's publisher chooses, all signed in its content: the domains
-/// that serve it and the application's own fields.
+/// that serve it and each application's field.
+///
+/// Integer content keys are Diem's: 0–8 hold the content header, 9 the domains, and
+/// higher keys are reserved for later Diem versions. Each application owns one field,
+/// keyed by its ``ApplicationID``. Fields decoded from a profile keep any Diem keys above 9
+/// that this version does not know, and re-signing the fields signs them unchanged.
 public struct ProfileFields: Hashable, Sendable {
-  /// Content keys from this one up belong to the application; lower keys are Diem's.
-  public static let firstApplicationKey: UInt64 = 16
   /// The most domains one profile may list.
   public static let maximumDomains = 16
+  /// The most application fields one profile may carry.
+  public static let maximumApplications = 16
 
   /// Distinct domains.
   public var domains: [DomainName]
-  /// Application fields, keyed from ``firstApplicationKey`` up.
-  public var application: [UInt64: CBOR]
+  /// Each application's field.
+  public var applications: [ApplicationID: CBOR]
+  /// Diem content keys above ``ProfileRecord/cborKeyContentDomains`` that this version
+  /// does not know, kept from a decoded profile.
+  var extensions: [UInt64: CBOR] = [:]
 
-  public init(domains: [DomainName] = [], application: [UInt64: CBOR] = [:]) {
+  public init(domains: [DomainName] = [], applications: [ApplicationID: CBOR] = [:]) {
     self.domains = domains
-    self.application = application
+    self.applications = applications
   }
 
-  /// Decodes fields from their ``encoding``.
+  /// Decodes caller-authored fields from their ``encoding``: the domains at
+  /// ``ProfileRecord/cborKeyContentDomains`` and application fields. Any other integer
+  /// key is ``DiemError/invalidEncoding``, because callers cannot author Diem fields.
   public init(encoding: [UInt8]) throws(DiemError) {
-    let a = try CBOR(decoding: encoding).recordValue(
-      requiredKeys: ProfileRecord.cborKeyContentDomains..<(ProfileRecord.cborKeyContentDomains + 1))
-    // Other Diem keys would be dropped when signed.
-    guard a.keys.allSatisfy({ $0 == ProfileRecord.cborKeyContentDomains || $0 >= Self.firstApplicationKey })
-    else { throw .invalidEncoding }
-    try self.init(content: a)
+    let domains = ProfileRecord.cborKeyContentDomains
+    let content = try CBOR(decoding: encoding).recordValue(requiredKeys: domains..<(domains + 1))
+    guard content.fields.count == 1 else { throw .invalidEncoding }
+    try self.init(content: content)
   }
 
   /// Decodes the fields of a profile content record.
-  init(content: [UInt64: CBOR]) throws(DiemError) {
+  init(content: CBOR.Record) throws(DiemError) {
     var domains: [DomainName] = []
     for domain in try content[ProfileRecord.cborKeyContentDomains]!.arrayValue() {
       domains.append(try DomainName(domain.textValue()))
     }
-    self.init(domains: domains, application: content.filter { $0.key >= Self.firstApplicationKey })
+    self.init(domains: domains, applications: content.applications)
+    extensions = content.extensions(above: ProfileRecord.cborKeyContentDomains).fields
     try validate()
   }
 
   /// A CBOR map of the domains at ``ProfileRecord/cborKeyContentDomains`` and the
-  /// application fields at their own keys, as in the signed content.
-  public var encoding: [UInt8] { CBOR.record(contentFields).encoded }
-
-  var contentFields: [UInt64: CBOR] {
-    application.merging(
-      [ProfileRecord.cborKeyContentDomains: .array(domains.map { .text($0.name) })]
-    ) { _, domains in domains }
+  /// application fields at their IDs, as in the signed content. Retained Diem extension
+  /// keys are not part of it, so it always decodes with ``init(encoding:)``.
+  public var encoding: [UInt8] {
+    CBOR.record([ProfileRecord.cborKeyContentDomains: domainList], applications: applications)
+      .encoded
   }
 
-  /// Throws unless the domains are distinct and few enough, and every application key is
-  /// the application's.
+  var domainList: CBOR { .array(domains.map { .text($0.name) }) }
+
+  /// Throws unless the domains are distinct and few enough, and the application fields
+  /// are few enough.
   func validate() throws(DiemError) {
     guard domains.count <= Self.maximumDomains, Set(domains).count == domains.count else {
       throw .invalidDomain
     }
-    guard application.keys.allSatisfy({ $0 >= Self.firstApplicationKey }) else {
-      throw .invalidEncoding
-    }
+    guard applications.count <= Self.maximumApplications else { throw .invalidEncoding }
   }
 }
 
@@ -232,8 +268,8 @@ public struct ProfileRecord: DomainNamedProfile {
   public static let cborKeyDevices: UInt64 = 3
   public static let cborKeyContent: UInt64 = 4
 
-  /// CBOR field keys in the signed content. Keys from
-  /// ``ProfileFields/firstApplicationKey`` up hold application fields.
+  /// CBOR field keys in the signed content. Keys above ``cborKeyContentDomains`` are
+  /// reserved for Diem; application fields are keyed by ``ApplicationID``.
   public static let cborKeyContentTag: UInt64 = 0
   public static let cborKeyContentVersion: UInt64 = 1
   public static let cborKeyContentIdentityID: UInt64 = 2
@@ -245,7 +281,7 @@ public struct ProfileRecord: DomainNamedProfile {
   public static let cborKeyContentExpiresAt: UInt64 = 8
   public static let cborKeyContentDomains: UInt64 = 9
 
-  private var extensionFields: [UInt64: CBOR] = [:]
+  private var extensionFields = CBOR.Record()
 
   /// Default publishing lifetime. Applications may choose a different interval.
   public static let defaultLifetime: UInt64 = 24 * 60 * 60
@@ -269,21 +305,26 @@ public struct ProfileRecord: DomainNamedProfile {
   /// The digest of the previous revision; `nil` for revision 1.
   public let previousDigest: Digest?
   public let validity: Validity
-  /// The signed domains and application fields.
+  /// The signed domains, application fields and retained Diem fields.
   public let fields: ProfileFields
 
   public var record: ProfileRecord { self }
   public var content: ProfileFields { fields }
+  /// None: the content is the complete fields, so publishing it replaces every field.
+  public static var applications: Set<ApplicationID> { [] }
   public init(record: ProfileRecord) { self = record }
   public static func fields(for content: ProfileFields) -> ProfileFields { content }
+  /// `content` itself, including every application field and retained Diem field.
+  public static func fields(for content: ProfileFields, over current: ProfileFields?)
+    -> ProfileFields
+  { content }
 
   /// Decodes a well-formed profile from its encoding. ``verify(using:at:)`` checks its
   /// signatures and validity.
   public init(encoding: [UInt8]) throws(DiemError) {
     let a = try CBOR(decoding: encoding).recordValue(
+      tag: .text("Diem/profile"), version: 5,
       requiredKeys: Self.cborKeyTag..<(Self.cborKeyContent + 1))
-    guard a[Self.cborKeyTag]! == .text("Diem/profile"), a[Self.cborKeyVersion]! == .unsigned(4)
-    else { throw .invalidEncoding }
     let certificates = try a[Self.cborKeyDevices]!.arrayValue()
     var devices: [DeviceCertificate] = []
     for certificate in certificates {
@@ -293,19 +334,15 @@ public struct ProfileRecord: DomainNamedProfile {
       identityKey: IdentityPublicKey(PublicKey(encoding: a[Self.cborKeyIdentityKey]!.bytesValue())),
       devices: devices,
       signedContent: SignedMessage(encoding: a[Self.cborKeyContent]!.bytesValue()))
-    extensionFields = a.filter { $0.key > Self.cborKeyContent }
+    extensionFields = a.extensions(above: Self.cborKeyContent)
   }
 
   private init(identityKey: IdentityPublicKey, devices: [DeviceCertificate], signedContent: SignedMessage)
     throws(DiemError)
   {
     let c = try CBOR(decoding: signedContent.message).recordValue(
+      tag: .text("Diem/profile-content"), version: 5,
       requiredKeys: Self.cborKeyContentTag..<(Self.cborKeyContentDomains + 1))
-    guard c[Self.cborKeyContentTag]! == .text("Diem/profile-content"),
-      c[Self.cborKeyContentVersion]! == .unsigned(4)
-    else {
-      throw .invalidEncoding
-    }
     guard try Digest(bytes: c[Self.cborKeyContentIdentityID]!.bytesValue()) == identityKey.id else {
       throw .identityMismatch
     }
@@ -344,11 +381,11 @@ public struct ProfileRecord: DomainNamedProfile {
   public var encoding: [UInt8] {
     CBOR.record(
       [
-        Self.cborKeyTag: .text("Diem/profile"), Self.cborKeyVersion: .unsigned(4),
+        Self.cborKeyTag: .text("Diem/profile"), Self.cborKeyVersion: .unsigned(5),
         Self.cborKeyIdentityKey: .bytes(identityKey.key.encoding),
         Self.cborKeyDevices: .array(devices.map { .bytes($0.encoding) }),
         Self.cborKeyContent: .bytes(signedContent.encoding),
-      ], extensions: extensionFields
+      ], retaining: extensionFields
     ).encoded
   }
 
@@ -361,7 +398,7 @@ public struct ProfileRecord: DomainNamedProfile {
     let message = CBOR.record(
       [
         Self.cborKeyContentTag: .text("Diem/profile-content"),
-        Self.cborKeyContentVersion: .unsigned(4),
+        Self.cborKeyContentVersion: .unsigned(5),
         Self.cborKeyContentIdentityID: .bytes(identityKey.id.bytes),
         Self.cborKeyContentGeneration: .unsigned(generation),
         Self.cborKeyContentSignerID: .bytes(signer.publicKey.id.bytes),
@@ -369,7 +406,8 @@ public struct ProfileRecord: DomainNamedProfile {
         Self.cborKeyContentPreviousDigest: .bytes(previousDigest?.bytes ?? []),
         Self.cborKeyContentNotBefore: .unsigned(validity.notBefore),
         Self.cborKeyContentExpiresAt: .unsigned(validity.expiresAt),
-      ], extensions: fields.contentFields
+        Self.cborKeyContentDomains: fields.domainList,
+      ], applications: fields.applications, extensions: fields.extensions
     ).encoded
     return try Self(
       identityKey: identityKey, devices: devices,

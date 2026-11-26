@@ -14,8 +14,9 @@ import Testing
     #expect(profile.previousDigest == nil && profile.id == identity.identityKey?.publicKey.id)
     try await profile.verify(using: backend)
 
-    let proof = try ProofRecord(encoding: try await identity.prove([7]).encoding)
-    #expect(proof.data == [7] && proof.deviceID == identity.deviceKey.publicKey.id)
+    let proof = try ProofRecord(encoding: try await identity.prove(.bytes([7]), for: .test).encoding)
+    #expect(proof.application == .test && proof.value == .bytes([7]))
+    #expect(proof.deviceID == identity.deviceKey.publicKey.id)
     try await proof.verify(against: profile, using: backend)
 
     let stranger = try await TestIdentity(.data([]), using: backend)
@@ -78,7 +79,7 @@ import Testing
     let updated = try await laptop.update(.data([9]))
     #expect(updated.signer == laptopKey.publicKey)
     try await updated.verify(using: backend)
-    try await laptop.prove([4]).verify(against: updated, using: backend)
+    try await laptop.prove(.bytes([4]), for: .test).verify(against: updated, using: backend)
     await #expect(throws: DiemError.identityKeyRequired) {
       try await laptop.add(try await DevicePrivateKey.generate(using: backend).publicKey)
     }
@@ -89,7 +90,7 @@ import Testing
     let lostKey = try await DevicePrivateKey.generate(using: backend)
     let withLost = try await owner.add(lostKey.publicKey)
     let lost = try await TestIdentity(profile: withLost, deviceKey: lostKey, using: backend)
-    let staleProof = try await lost.prove([1])
+    let staleProof = try await lost.prove(.bytes([1]), for: .test)
 
     let without = try await owner.remove(lostKey.publicKey.id)
     #expect(without.generation == 2 && without.devices.count == 1)
@@ -127,7 +128,7 @@ import Testing
     let bob = try await TestIdentity(.data([]), using: backend)
     func mixed(key: ProfileRecord, devices: ProfileRecord, content: ProfileRecord) -> [UInt8] {
       CBOR.map([
-        .unsigned(0): .text("Diem/profile"), .unsigned(1): .unsigned(4), .unsigned(2): .bytes(key.identityKey.key.encoding),
+        .unsigned(0): .text("Diem/profile"), .unsigned(1): .unsigned(5), .unsigned(2): .bytes(key.identityKey.key.encoding),
         .unsigned(3): .array(devices.devices.map { .bytes($0.encoding) }), .unsigned(4): .bytes(content.signedContent.encoding),
       ]).encoded
     }
@@ -188,6 +189,7 @@ import Testing
     struct Fixture: Decodable {
       struct Vector: Decodable { let profile, proof, identityID: String }
       let now: UInt64
+      let application: String
       let vectors: [Vector]
     }
     func bytes(_ hex: String) -> [UInt8] {
@@ -201,15 +203,16 @@ import Testing
       return result
     }
     let url = URL(filePath: #filePath).deletingLastPathComponent()
-      .appending(path: "../Vectors/diem-v4.json")
+      .appending(path: "../Vectors/diem-v5.json")
     let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
     for vector in fixture.vectors {
       let profile = try ProfileRecord(encoding: bytes(vector.profile))
       #expect(profile.id.bytes == bytes(vector.identityID))
       try await profile.verify(using: backend, at: fixture.now)
-      try await ProofRecord(encoding: bytes(vector.proof)).verify(
-        against: profile, using: backend, at: fixture.now)
-
+      let proof = try ProofRecord(encoding: bytes(vector.proof))
+      try await proof.verify(against: profile, using: backend, at: fixture.now)
+      #expect(proof.application.name == fixture.application)
+      #expect(profile.fields.applications.keys.map(\.name) == [fixture.application])
     }
   }
 }

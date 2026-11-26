@@ -66,16 +66,17 @@ if CommandLine.arguments.contains("--identity-seed") {
   print(String(decoding: json, as: UTF8.self))
 } else {
   var vectors: [[String: Any]] = []
+  let application = try ApplicationID("org.example.vectors")
   for algorithm: PublicKey.Algorithm in [.mlDSA65, .ed25519, .p256] {
     let root = try await backend.makePrivateKey(algorithm, for: .identity)
     let identityKey = try IdentityPrivateKey(root)
     let deviceKey = try await DevicePrivateKey.generate(algorithm, using: backend)
     let identity = try await BasicIdentity<ProfileRecord>(
       ProfileFields(domains: [DomainName("vectors.example")],
-        application: [ProfileFields.firstApplicationKey: .bytes(Array("cross-language profile".utf8))]),
+        applications: [application: .bytes(Array("cross-language profile".utf8))]),
       identityKey: identityKey, deviceKey: deviceKey, using: backend)
     let profile = identity.profile
-    let proof = try await identity.prove(Array("cross-language proof".utf8))
+    let proof = try await identity.prove(.bytes(Array("cross-language proof".utf8)), for: application)
     vectors.append([
       "algorithm": algorithm.rawValue,
       "identityKey": profile.identityKey.key.encoding.hex,
@@ -93,8 +94,9 @@ if CommandLine.arguments.contains("--identity-seed") {
     ])
   }
   let json = try JSONSerialization.data(
-    withJSONObject: ["protocol": "Diem/v4", "now": backend.now, "vectors": vectors],
-    options: [.prettyPrinted, .sortedKeys])
+    withJSONObject: ["protocol": "Diem/v5", "now": backend.now, "application": application.name,
+      "vectors": vectors],
+    options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
   print(String(decoding: json, as: UTF8.self))
 
 }

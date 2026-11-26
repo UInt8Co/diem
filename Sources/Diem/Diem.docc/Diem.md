@@ -6,29 +6,58 @@ Portable identities: keys, signed messages, device-certified profiles and proofs
 
 An identity is an identity key. The identity key certifies device keys, a certified
 device signs the identity's profile content, and any certified device signs proofs of
-data on the identity's behalf. Every record is a canonical CBOR map with unsigned integer keys; arrays contain lists
-only. Each record type exposes its field numbers as public static `cborKey…` constants.
-Required keys and types are checked, and unknown integer keys are accepted.
-Signed envelopes and public keys retain extension fields when re-encoded. Tuple
-encodings are not accepted, so identities and stored profiles require fresh state.
+application values on the identity's behalf.
 
 ```swift
 var identity = try await BasicIdentity<ProfileRecord>(
   ProfileFields(domains: [DomainName("alice.example")]), using: backend)
 try await identity.add(laptop.publicKey)
-let proof = try await identity.prove(challenge)
+let proof = try await identity.prove(challenge)  // a Statement
 try await proof.verify(against: identity.profile, using: backend)
 ```
+
+### Records and applications
+
+Every record is a canonical CBOR map; arrays contain lists only. Unsigned integer keys
+are Diem's, and each record type exposes its field numbers as public static `cborKey…`
+constants. Text keys are ``ApplicationID``s: reverse-DNS names such as
+`com.example.notes`, each holding one application's field. Any other key type, or a text
+key that is not a valid ID, is ``DiemError/invalidEncoding``. Required keys and types are
+checked; unknown integer keys and every application field are accepted and retained when
+a record is re-encoded. Applications write their fields only in profile content and
+proofs. ``CBOR/Record`` is the same shape for an application's own records. Tuple
+encodings are not accepted, so identities and stored profiles require fresh state.
+
+This is wire version 5: `Diem/profile` and `Diem/profile-content` are version 5 and
+`Diem/proof` version 4. `Tests/Vectors/diem-v5.json` holds cross-language vectors, which
+`Scripts/verify-vectors.ts` checks independently with WebCrypto.
 
 ### Profiles, identities and proofs
 
 ``Profile``, ``Identity`` and ``Proof`` are protocols. A profile is a signed
 ``ProfileRecord`` and the application ``Profile/Content`` decoded from it; the
 application chooses the ``ProfileFields`` that publish new content. Those fields are
-signed directly in the profile content: Diem keeps content keys below
-``ProfileFields/firstApplicationKey`` and the application owns the rest, so application
-profiles need no nested record of their own. ``ProfileRecord`` and ``ProofRecord`` are
-the default profile and proof, with uninterpreted fields and data.
+signed directly in the profile content: Diem's integer keys hold the content header and
+the domains, and each application's field sits under its ID, at most
+``ProfileFields/maximumApplications`` of them. ``ProfileRecord`` and ``ProofRecord`` are
+the default profile and proof, with uninterpreted fields and value.
+
+Several applications can share one identity's profile. A profile type names the
+``Profile/applications`` whose fields its content owns. Every path that publishes content
+(`init(publishing:…)`, `Identity.updating`, and `enrolling` with content) goes through
+`fields(for:over:)`, which replaces the domains and the owned fields and keeps every
+other application's field and any Diem content key newer than this version verbatim.
+`renewing`, `adding`, `removing` and `enrolling` without content re-sign all current
+fields unchanged. A future Diem field that must not be re-signed blindly will come with a
+version bump instead. ``ProfileRecord``'s content is its complete fields, so publishing
+it replaces them all.
+
+A proof signs exactly one application's value under that application's ID. A
+``Statement`` is an application's typed value: `identity.prove(statement)` signs it, and
+``StatementProof`` decodes it, refusing a proof made for another application. Diem signs
+statements without checking them; an application that checks a statement first wraps
+`prove`, and `requireLive(until:window:)` is the shared check that a short-lived challenge
+expires within a signing window.
 
 Every profile signs the ``DomainName`` list that serves it. A ``DomainNamedProfile``
 states how many domains its kind lists, and a verifier that fetched a profile from a
@@ -81,8 +110,7 @@ rejects an incorrect word count, unknown words or a failed checksum.
 
 `identityKey(_:using:)` derives an Ed25519 or ML-DSA-65 identity key with HKDF-SHA256,
 an empty salt, and canonical CBOR info `{0:"Diem/identity-seed",1:1,2:1,3:algorithm}`.
-There is no default algorithm; Blah clients choose `.ed25519`. P-256 identity derivation
-is unsupported. These are recovery words, not a BIP 39 wallet seed.
+There is no default algorithm. P-256 identity derivation is unsupported. These are recovery words, not a BIP 39 wallet seed.
 `identityKey(matching:using:)` checks the derived key against a trusted profile.
 `Tests/Vectors/identity-seed.json` holds cross-language vectors.
 
@@ -117,6 +145,9 @@ for hardware stores such as Secure Enclave.
 - ``DeviceCertificate``
 - ``Proof``
 - ``ProofRecord``
+- ``Statement``
+- ``StatementProof``
+- ``ApplicationID``
 
 ### Identity and device keys
 

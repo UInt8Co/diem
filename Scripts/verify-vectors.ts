@@ -1,4 +1,4 @@
-// Independent WebCrypto verifier for the committed Diem v4 wire vectors.
+// Independent WebCrypto verifier for the committed Diem v5 wire vectors.
 // deno run --allow-read Scripts/verify-vectors.ts
 function assert(condition: unknown): asserts condition {
   if (!condition) throw new Error("Vector assertion failed");
@@ -61,10 +61,16 @@ function decode(input: Uint8Array): Value {
   return result;
 }
 
-function record(v: Value, required: number): Record<number, Value> {
+// Integer keys are Diem's; text keys are reverse-DNS application IDs, kept under "applications".
+const applicationID = /^(?=.{1,253}$)[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+type Fields = Record<number, Value> & { applications: Map<string, Value> };
+function record(v: Value, required: number): Fields {
   assert(v instanceof Map);
-  const fields: Record<number, Value> = {};
-  for (const [key, value] of v) { assert(typeof key === "bigint" && key >= 0n); fields[Number(key)] = value; }
+  const fields = { applications: new Map<string, Value>() } as Fields;
+  for (const [key, value] of v) {
+    if (typeof key === "string") { assert(applicationID.test(key)); fields.applications.set(key, value); }
+    else { assert(key >= 0n); fields[Number(key)] = value; }
+  }
   for (let key = 0; key < required; key++) assert(key in fields);
   return fields;
 }
@@ -98,8 +104,11 @@ async function verifySigned(encodedKey: Uint8Array, purpose: bigint, message: Ui
   assert(!await verify(encodedKey, purpose, tampered, signature));
 }
 
-const fixture = JSON.parse(await Deno.readTextFile(new URL("../Tests/Vectors/diem-v4.json", import.meta.url)));
-assert(fixture.protocol === "Diem/v4");
+const fixture = JSON.parse(await Deno.readTextFile(new URL("../Tests/Vectors/diem-v5.json", import.meta.url)));
+assert(fixture.protocol === "Diem/v5" && applicationID.test(fixture.application));
+for (const id of ["com", "Com.example", "1com.example", "com..example", "com.-example", "com.example-", "com.ex_ample"]) {
+  assert(!applicationID.test(id));
+}
 for (const v of fixture.vectors) {
   const identityKey = hex(v.identityKey), deviceKey = hex(v.deviceKey);
   const identityID = hex(v.identityID), deviceID = hex(v.deviceID);
@@ -116,26 +125,31 @@ for (const v of fixture.vectors) {
   const content = hex(v.contentMessage);
   await verifySigned(deviceKey, 2n, content, hex(v.contentSignature));
   assert(!await verify(identityKey, 1n, content, hex(v.contentSignature)));
-  const p = tagged(content, "Diem/profile-content", 10, 4n);
+  const p = tagged(content, "Diem/profile-content", 10, 5n);
   assert(equal(bytes(p[2]), identityID) && p[3] === 1n && equal(bytes(p[4]), deviceID) && p[5] === 1n);
-  // Domains are Diem's; application fields start at key 16.
+  // Integer keys are Diem's (9 holds the domains); the application's field is under its ID.
   assert(Array.isArray(p[9]) && p[9].length === 1 && p[9][0] === "vectors.example");
-  assert(equal(bytes(p[16]), new TextEncoder().encode("cross-language profile")));
-  const profile = tagged(hex(v.profile), "Diem/profile", 5, 4n);
+  assert(Object.keys(p).length === 11 && p.applications.size === 1);
+  assert(equal(bytes(p.applications.get(fixture.application)!), new TextEncoder().encode("cross-language profile")));
+  const profile = tagged(hex(v.profile), "Diem/profile", 5, 5n);
   assert(equal(bytes(profile[2]), identityKey));
 
   const proof = hex(v.proofMessage);
   await verifySigned(deviceKey, 2n, proof, hex(v.proofSignature));
-  const q = tagged(proof, "Diem/proof", 5);
+  const q = tagged(proof, "Diem/proof", 4, 4n);
   assert(equal(bytes(q[2]), identityID) && equal(bytes(q[3]), deviceID));
-  assert(equal(bytes(q[4]), new TextEncoder().encode("cross-language proof")));
-
-
+  // Exactly one application's value.
+  assert(q.applications.size === 1);
+  assert(equal(bytes(q.applications.get(fixture.application)!), new TextEncoder().encode("cross-language proof")));
 }
 for (const malformed of ["a200010002", "1800", "0000", "9fff"]) {
   assertThrows(() => decode(hex(malformed)));
 }
-console.log(`Verified ${fixture.vectors.length} Diem v4 vectors with WebCrypto.`);
+// Records refuse keys that are neither unsigned integers nor application IDs.
+for (const map of ["a12000", "a1614100", "a163636f6d00", "a1410000"]) {
+  assertThrows(() => record(decode(hex(map)), 0));
+}
+console.log(`Verified ${fixture.vectors.length} Diem v5 vectors with WebCrypto.`);
 
 // Identity seeds: BIP 39 English words over the entropy, HKDF-SHA256 seeds per algorithm.
 const words = (await Deno.readTextFile(new URL("../Sources/Diem/PaperWords.swift", import.meta.url)))

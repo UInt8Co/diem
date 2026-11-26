@@ -8,7 +8,7 @@ public struct SealedIdentitySeed: Hashable, Sendable {
   public static let cborKeyEncapsulatedKey: UInt64 = 4
   public static let cborKeyCiphertext: UInt64 = 5
 
-  private var extensionFields: [UInt64: CBOR] = [:]
+  private var extensionFields = CBOR.Record()
 
   public let identityKey: IdentityPublicKey
   /// The key that can open this box.
@@ -18,19 +18,15 @@ public struct SealedIdentitySeed: Hashable, Sendable {
   /// Decodes a sealed seed from its ``encoding``.
   public init(encoding: [UInt8]) throws(DiemError) {
     let a = try CBOR(decoding: encoding).recordValue(
+      tag: .text("Diem/sealed-identity-seed"), version: 1,
       requiredKeys: Self.cborKeyTag..<(Self.cborKeyCiphertext + 1))
-    guard a[Self.cborKeyTag]! == .text("Diem/sealed-identity-seed"),
-      a[Self.cborKeyVersion]! == .unsigned(1)
-    else {
-      throw .invalidEncoding
-    }
     identityKey = try IdentityPublicKey(
       PublicKey(encoding: a[Self.cborKeyIdentityKey]!.bytesValue()))
     recipient = try EncryptionPublicKey(encoding: a[Self.cborKeyRecipient]!.bytesValue())
     box = try SealedBox(
       encapsulatedKey: a[Self.cborKeyEncapsulatedKey]!.bytesValue(),
       ciphertext: a[Self.cborKeyCiphertext]!.bytesValue())
-    extensionFields = a.filter { $0.key > Self.cborKeyCiphertext }
+    extensionFields = a.extensions(above: Self.cborKeyCiphertext)
   }
 
   /// The canonical encoding.
@@ -42,7 +38,7 @@ public struct SealedIdentitySeed: Hashable, Sendable {
         Self.cborKeyRecipient: .bytes(recipient.encoding),
         Self.cborKeyEncapsulatedKey: .bytes(box.encapsulatedKey),
         Self.cborKeyCiphertext: .bytes(box.ciphertext),
-      ], extensions: extensionFields
+      ], retaining: extensionFields
     ).encoded
   }
 

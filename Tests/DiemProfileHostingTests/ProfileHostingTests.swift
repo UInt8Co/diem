@@ -478,7 +478,7 @@ extension HostingReadPerfTests {
     let clock = TestBackend()
     let identity = try await TestIdentity(
       ProfileFields(domains: [try DomainName("alice.id.example")],
-        application: [16: .bytes([UInt8](repeating: 42, count: 100_000))]),
+        applications: [ApplicationID("org.example.test"): .bytes([UInt8](repeating: 42, count: 100_000))]),
       identityKey: .generate(.ed25519, using: clock),
       deviceKey: .generate(.ed25519, using: clock), using: clock)
     let db = try await HostingDatabase(path: ":memory:")

@@ -13,7 +13,7 @@ fails. Availability and ownership plans are hints; the server decides publicatio
 let host = ProfileHostingClient(domain: try DomainName("id.example"), http: transport)
 let solver = PortableProofOfWorkSolver()
 let claim = try await identity.claiming(labels: ["alice"], at: host, solver: solver) {
-  content, domains in ProfileFields(domains: domains, application: content.application)
+  content, domains in ProfileFields(domains: domains, applications: content.applications)
 }
 // Store claim.profile durably, then publish it; retry the same bytes if unanswered.
 try await host.publish(claim, solver: solver)
