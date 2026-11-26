@@ -1,5 +1,7 @@
 // Diem's web API. Applications that bundle Diem's modules into their own runtime reuse
-// these declarations (see README.md, "Building an application runtime").
+// these declarations (see README.md, "Building an application runtime"). `DiemProfile`,
+// `DiemDevice`, `DiemDeviceLinkOpened`, `DiemDeviceLinkApproval`, `DiemClient` and
+// `createDiem` describe the standalone runtime's generic forms; applications declare their own.
 
 /** Keys remain with the caller; callbacks belong to one operation only. */
 export interface CryptoBackend {

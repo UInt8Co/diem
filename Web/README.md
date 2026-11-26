@@ -7,10 +7,12 @@ keys and non-extractable ECDSA P-256 device keys, and verifies both algorithms.
 Applications own encrypted seed storage, platform key persistence, publication and user
 consent.
 
-The package has two halves. The `DiemWeb` Swift library exports the generic `@JS` API;
-the JavaScript modules beside this file wrap it. The standalone runtime (`diem.js`,
-`diem.wasm`, `device-link-worker.js`) is DiemWeb alone. An application builds its own
-runtime from the same Swift library and JavaScript modules and ships one WASM (see
+The package has two halves. The `DiemWeb` Swift library exports the shared `@JS` API
+(hosting and device-link sessions); the JavaScript modules beside this file wrap it. The
+standalone runtime (`diem.js`, `diem.wasm`, `device-link-worker.js`) is DiemWeb plus the
+`DiemWebRuntime` executable's generic `ProfileRecord` forms of profile verification and
+device linking. An application builds its own runtime from the same Swift library and
+JavaScript modules, supplies its own forms of those, and ships one WASM (see
 [Building an application runtime](#building-an-application-runtime)).
 
 ```js
@@ -199,7 +201,9 @@ relay, which carries ciphertext only. The wire rules are in Diem's `DeviceLink.s
 ## Building an application runtime
 
 An application's runtime is one WASM holding DiemWeb's `@JS` API and its own, plus one
-JavaScript bundle and one link worker built from Diem's modules.
+JavaScript bundle and one link worker built from Diem's modules. It does not link the
+standalone runtime's generic `ProfileRecord` exports, so it pays only for its own profile
+type.
 
 **Swift.** Link the `DiemWeb` library into the application's web executable, keeping the
 BridgeJS plugin on both. PackageToJS collects every linked target's BridgeJS skeleton,
@@ -209,17 +213,18 @@ declarations, the application compiles DiemWeb as a target of its own package (i
 `Sources/DiemWeb/bridge-js.config.json` exposes the types). Otherwise it maps DiemWeb's
 public Swift values into its own `@JS` structs. All `@JS` names share one JavaScript
 namespace, so the application must not reuse DiemWeb's exported names: the functions
-`hostingPolicy`, `hostingPlan`, `hostingPublish`, `hostingProfile`, `verifyDiemProfile`,
-`inspectDeviceLink`, `beginDeviceLink`, `destroyDeviceLink`, `openDiemDeviceLink` and
-`respondToDiemDeviceLink`, and the structs `Hosting*Info`, `DiemApplicationField`,
-`DiemDeviceInfo`, `DiemProfileInfo`, `DeviceLinkInspection`, `DeviceLinkBeginning`,
-`DiemDeviceLinkOpening` and `DiemDeviceLinkApproval`.
+`hostingPolicy`, `hostingPlan`, `hostingPublish`, `hostingProfile`, `inspectDeviceLink`,
+`beginDeviceLink` and `destroyDeviceLink`, and the structs `Hosting*Info`,
+`DeviceLinkInspection` and `DeviceLinkBeginning`. The standalone executable
+(`Sources/DiemWebRuntime`) adds `verifyDiemProfile`, `openDiemDeviceLink`,
+`respondToDiemDeviceLink` and the structs `DiemApplicationField`, `DiemDeviceInfo`,
+`DiemProfileInfo`, `DiemDeviceLinkOpening` and `DiemDeviceLinkApproval`; they are a
+reference for an application's own forms.
 
 DiemWeb's public Swift support is `BrowserBackend` (the WebCrypto `CryptoBackend`),
 `bytes(_:)`, `secretBytes(_:)`, `seconds(_:)`, `diemErrorCode(_:)`, `bridgeError(_:)` and
 `hostingError(_:)`, the hosting callbacks `BrowserHostingHTTP` and `BrowserHostingSolver`,
-`DiemProfileInfo(_:at:)` and `DiemApplicationField.list(_:)`/`fields(_:)`, and
-`WebDeviceLink`, whose `open` and `respond` take the application's profile type, its
+and `WebDeviceLink`, whose `open` and `respond` take the application's profile type, its
 `accept` check (the verified profile and the grant, before any seed is opened) and its
 grant fields. An application's `@JS` open and respond call these with its own rules;
 `begin`, `inspect` and `destroy` are DiemWeb's.
@@ -234,7 +239,7 @@ names are stable:
 | `seeds.js`, `seed-words.js` | `seeds()`, `identityContext`; `seedWords` |
 | `link-crypto.js` | `linkBackend(device?)`: the HPKE recipient and seed callbacks of a link realm |
 | `hosting.js` | `hosting(exports)`, `fetchTransport(options)` |
-| `client.js` | `diemClient(exports, wasmURL, {deviceLinkProtocol, deviceLinkWorker}?)`, `profileInfo(info)` |
+| `client.js` | `diemClient(exports, wasmURL, {deviceLinkProtocol, deviceLinkWorker}?)`: `seeds`, `deviceKeys`, `hosting`, `deviceLink` |
 | `device-link-protocol.js` | `diemLinkProtocol`, `linkBytes`, `linkParameter`, `applicationFields`, `wipe` |
 | `device-links.js` | `deviceLink(exports, wasmURL, protocol?, workerURL?)` |
 | `device-link-session.js` | `linkInstanceFactory(init, protocol)`, `serveLinkWorker(createLinkInstance, protocol)` |
@@ -242,13 +247,15 @@ names are stable:
 `runtime.js` and `device-link-worker.js` are the standalone entry points: they import the
 standalone build's generated `init`, so applications write their own two entries instead.
 The application's runtime spreads `diemClient(exports, wasmURL, {deviceLinkProtocol})`
-into its client and adds or replaces operations (such as its own `verifyProfile`). Its
+into its client and adds its operations (such as its own `verifyProfile`). Its
 link worker module is
 `export const createLinkInstance = linkInstanceFactory(init, protocol);
 serveLinkWorker(createLinkInstance, protocol);` and must be served as
 `device-link-worker.js` beside the runtime bundle, or passed as `deviceLinkWorker`.
 
-A device-link protocol is `diemLinkProtocol` with any of its members replaced:
+A device-link protocol is `diemLinkProtocol` with any of its members replaced; an
+application replaces at least `open` and `respond`, since its WASM lacks the generic
+exports:
 `openInput(...args)` validates the arguments after the session that `deviceLink.open`
 receives, `respondInput(input)` the approval, and `opened(result)` shapes the result; in
 the link realm, `open(exports, session, input)` and `respond(exports, input, backend)` call

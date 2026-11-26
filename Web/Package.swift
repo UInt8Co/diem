@@ -2,11 +2,13 @@
 import PackageDescription
 
 // Diem's browser runtime: a BridgeJS library that applications link into their own WASM,
-// and a thin executable for the standalone `diem.wasm`. See README.md.
+// and the standalone `diem.wasm` executable, which adds the generic `ProfileRecord` exports
+// that applications replace with their own. See README.md.
 let package = Package(
   name: "DiemWeb",
   products: [
-    // The generic `@JS` API and the Swift support an application's web executable reuses.
+    // The shared `@JS` API (hosting, link sessions) and the Swift support an application's
+    // web executable reuses.
     .library(name: "DiemWeb", targets: ["DiemWeb"]),
     // The standalone runtime; build it with `node build.mjs`.
     .executable(name: "DiemWebRuntime", targets: ["DiemWebRuntime"]),
@@ -31,13 +33,16 @@ let package = Package(
       name: "DiemWebRuntime",
       dependencies: [
         "DiemWeb",
+        .product(name: "JavaScriptKit", package: "JavaScriptKit"),
         .product(name: "JavaScriptEventLoop", package: "JavaScriptKit"),
       ],
+      swiftSettings: [.enableExperimentalFeature("Extern")],
       // Embedded keeps Unicode tables optional; preserve Swift String semantics.
       linkerSettings: [
         .linkedLibrary("swiftUnicodeDataTables", .when(platforms: [.wasi])),
         .unsafeFlags(["-Xclang-linker", "-mexec-model=reactor", "-Xlinker", "--export-if-defined=__main_argc_argv"], .when(platforms: [.wasi])),
-      ]
+      ],
+      plugins: [.plugin(name: "BridgeJS", package: "JavaScriptKit")]
     ),
   ],
   swiftLanguageModes: [.v5]

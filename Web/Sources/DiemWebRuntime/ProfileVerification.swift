@@ -1,5 +1,8 @@
-import Diem
+import DiemWeb
 import JavaScriptKit
+
+// The standalone runtime's generic profile verification. Applications verify their own
+// profile types instead of linking this.
 
 /// One application's field: its reverse-DNS ID and the canonical CBOR encoding of its
 /// value, which the application decodes itself.
