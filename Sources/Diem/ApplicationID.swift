@@ -21,12 +21,23 @@ public struct ApplicationID: Hashable, Comparable, Sendable, CustomStringConvert
     guard bytes.count <= maximumLength, let first = bytes.first, (97...122).contains(first) else {
       return false
     }
-    // Byte checks keep validation ASCII-only and free of Unicode tables.
-    let labels = bytes.split(separator: 46, omittingEmptySubsequences: false)
-    return labels.count >= 2 && labels.allSatisfy { label in
-      !label.isEmpty && label.count <= 63 && label.first != 45 && label.last != 45
-        && label.allSatisfy { (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }
+    // One pass over the bytes keeps validation ASCII-only, free of Unicode tables and small
+    // in WebAssembly. Labels are separated by "." (46); "-" is 45.
+    var dots = 0, length = 0, previous: UInt8 = 46
+    for byte in bytes {
+      if byte == 46 {
+        guard length > 0, previous != 45 else { return false }
+        dots += 1
+        length = 0
+      } else {
+        guard (97...122).contains(byte) || (48...57).contains(byte) || (byte == 45 && length > 0)
+        else { return false }
+        length += 1
+        guard length <= 63 else { return false }
+      }
+      previous = byte
     }
+    return dots >= 1 && length > 0 && previous != 45
   }
 
   public var description: String { name }

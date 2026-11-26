@@ -156,6 +156,12 @@ public indirect enum CBOR: Hashable, Sendable {
 
     /// The record as a CBOR map.
     public var value: CBOR { CBOR.record(fields, applications: applications) }
+
+    // Equal exactly when the maps are: integer and application keys never collide. Going
+    // through `value` reuses CBOR's own equality and hashing instead of specializing both
+    // for each key type, which keeps WebAssembly builds small.
+    public static func == (lhs: Record, rhs: Record) -> Bool { lhs.value == rhs.value }
+    public func hash(into hasher: inout Hasher) { value.hash(into: &hasher) }
   }
 
   private func append(to output: inout [UInt8]) {

@@ -239,9 +239,9 @@ names are stable:
 | `seeds.js`, `seed-words.js` | `seeds()`, `identityContext`; `seedWords` |
 | `link-crypto.js` | `linkBackend(device?)`: the HPKE recipient and seed callbacks of a link realm |
 | `hosting.js` | `hosting(exports)`, `fetchTransport(options)` |
-| `client.js` | `diemClient(exports, wasmURL, {deviceLinkProtocol, deviceLinkWorker}?)`: `seeds`, `deviceKeys`, `hosting`, `deviceLink` |
+| `client.js` | `diemClient(exports, wasmURL, {deviceLinkProtocol, deviceLinkWorker?})`: `seeds`, `deviceKeys`, `hosting`, `deviceLink` |
 | `device-link-protocol.js` | `diemLinkProtocol`, `linkBytes`, `linkParameter`, `applicationFields`, `wipe` |
-| `device-links.js` | `deviceLink(exports, wasmURL, protocol?, workerURL?)` |
+| `device-links.js` | `deviceLink(exports, wasmURL, protocol, workerURL?)` |
 | `device-link-session.js` | `linkInstanceFactory(init, protocol)`, `serveLinkWorker(createLinkInstance, protocol)` |
 
 `runtime.js` and `device-link-worker.js` are the standalone entry points: they import the

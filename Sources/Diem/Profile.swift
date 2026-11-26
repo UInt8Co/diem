@@ -38,16 +38,7 @@ extension Profile {
   public static func fields(for content: Content, over current: ProfileFields?) throws
     -> ProfileFields
   {
-    let published = try fields(for: content)
-    guard published.applications.keys.allSatisfy(applications.contains) else {
-      throw DiemError.invalidEncoding
-    }
-    var fields = current ?? ProfileFields()
-    fields.domains = published.domains
-    for application in applications {
-      fields.applications[application] = published.applications[application]
-    }
-    return fields
+    try (current ?? ProfileFields()).publishing(fields(for: content), owning: applications)
   }
 
   /// Decodes a well-formed profile from its ``encoding``.
@@ -259,6 +250,20 @@ public struct ProfileFields: Hashable, Sendable {
   }
 
   var domainList: CBOR { .array(domains.map { .text($0.name) }) }
+
+  /// These fields with `published`'s domains and, for each application in `owned`, its
+  /// field from `published` (or none). Non-generic, so each profile type shares one copy.
+  func publishing(_ published: ProfileFields, owning owned: Set<ApplicationID>)
+    throws(DiemError) -> ProfileFields
+  {
+    guard published.applications.keys.allSatisfy(owned.contains) else { throw .invalidEncoding }
+    var fields = self
+    fields.domains = published.domains
+    for application in owned {
+      fields.applications[application] = published.applications[application]
+    }
+    return fields
+  }
 
   /// Throws unless the domains are distinct and few enough, and the application fields
   /// are few enough.

@@ -8,10 +8,9 @@ import {deviceLink} from './device-links.js';
 /**
  * `exports` must include DiemWeb's `@JS` functions; `wasmURL` is reloaded by link realms.
  * `deviceLinkProtocol` calls the runtime's own device-link exports (see
- * device-link-protocol.js; the default calls the standalone runtime's generic forms) and
- * `deviceLinkWorker` replaces the link worker's URL.
+ * device-link-protocol.js) and `deviceLinkWorker` replaces the link worker's URL.
  */
-export function diemClient(exports, wasmURL, {deviceLinkProtocol, deviceLinkWorker} = {}) {
+export function diemClient(exports, wasmURL, {deviceLinkProtocol, deviceLinkWorker}) {
   return {
     seeds: seeds(),
     deviceKeys,

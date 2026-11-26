@@ -2,15 +2,16 @@
 // recipient live only in a disposable link realm: a DedicatedWorker running the
 // application's link worker, or, where workers cannot be spawned (SharedWorker), a
 // separate WASM instance whose heap is wiped.
-import {diemLinkProtocol, linkBytes, linkParameter, wipe} from './device-link-protocol.js';
+import {linkBytes, linkParameter, wipe} from './device-link-protocol.js';
 
 /**
  * The `deviceLink` API. `exports` are the client's BridgeJS exports (only `inspectDeviceLink`
- * runs there); `wasmURL` is loaded again in each link realm. `workerURL` must name a module
+ * runs there); `wasmURL` is loaded again in each link realm. `protocol` is the runtime's
+ * device-link protocol (see device-link-protocol.js). `workerURL` must name a module
  * that exports `createLinkInstance` (see device-link-session.js) and serves link requests
  * when it runs as a DedicatedWorker.
  */
-export function deviceLink(exports, wasmURL, protocol = diemLinkProtocol,
+export function deviceLink(exports, wasmURL, protocol,
   workerURL = new URL('./device-link-worker.js', import.meta.url)) {
   const sessions = new WeakMap();
   const now = () => Math.floor(Date.now() / 1000);
