@@ -1,4 +1,5 @@
 import Diem
+import DiemTesting
 import Foundation
 import Testing
 @testable import DiemProfileHostingClient
@@ -82,7 +83,7 @@ import Testing
 
   @Test func policyArithmeticAndValidation() throws {
     func policy(_ base: Int64, _ slope: Int64, _ length: Int64) throws -> HostingPolicy {
-      try HostingPolicy(json: FakeHost.json(FakeHost.policy(base: base, slope: slope,
+      try HostingPolicy(json: FakeProfileHost.json(FakeProfileHost.policy(base: base, slope: slope,
         length: length)).body, domain: domain)
     }
     #expect(try policy(20, 2, 8).requiredBits(for: "alice") == 26)
@@ -93,11 +94,11 @@ import Testing
     #expect(try policy(0, 0, Int64.min).requiredBits(for: "a") == nil)
     #expect(try policy(-1, 0, 8).requiredBits(for: "a") == nil)
     #expect(throws: ProfileHostingError.domainMismatch) {
-      try HostingPolicy(json: FakeHost.json(FakeHost.policy(domain: "other.example")).body,
+      try HostingPolicy(json: FakeProfileHost.json(FakeProfileHost.policy(domain: "other.example")).body,
         domain: domain)
     }
     #expect(throws: ProfileHostingError.unsupportedAlgorithm("future")) {
-      try HostingPolicy(json: FakeHost.json(FakeHost.policy(algorithm: "future")).body,
+      try HostingPolicy(json: FakeProfileHost.json(FakeProfileHost.policy(algorithm: "future")).body,
         domain: domain)
     }
   }
@@ -126,7 +127,7 @@ import Testing
   }
 
   @Test func unknownProblems() throws {
-    let response = FakeHost.json(["type": "urn:diem:profile-hosting:future",
+    let response = FakeProfileHost.json(["type": "urn:diem:profile-hosting:future",
       "title": "Future", "status": 429, "detail": "Wait",
       "labels": [["label": "alice", "reason": "future", "requiredBits": 12]]],
       status: 429, headers: ["rEtRy-AfTeR": "123"])

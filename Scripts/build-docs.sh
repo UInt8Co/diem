@@ -10,6 +10,7 @@ TARGETS=(
   DiemSwiftCrypto
   DiemProfileHostingClient
   DiemProfileHosting
+  DiemTesting
 )
 
 # Swift 6.4's experimental HTML-content renderer crashes in FoundationXML on

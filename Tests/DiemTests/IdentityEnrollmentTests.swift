@@ -1,5 +1,6 @@
 @testable import Diem
 import DiemSwiftCrypto
+import DiemTesting
 import Testing
 
 @Suite struct IdentityEnrollmentTests {

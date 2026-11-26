@@ -1,4 +1,5 @@
 import Diem
+import DiemTesting
 import Testing
 @testable import DiemProfileHostingClient
 
@@ -14,7 +15,7 @@ import Testing
   }
 
   @Test func claimSeveralUpdateAndRelease() async throws {
-    let server = FakeHost()
+    let server = FakeProfileHost()
     let client = ProfileHostingClient(domain: domain, http: server)
     let identity = try await identity(["external.example"])
     let solver = RecordingSolver()
@@ -60,7 +61,7 @@ import Testing
   }
 
   @Test func partialReleaseUsesRetainedHost() async throws {
-    let server = FakeHost()
+    let server = FakeProfileHost()
     let client = ProfileHostingClient(domain: domain, http: server)
     let identity = try await identity(["alice", "bob"])
     try await client.publish(identity.profile, solver: PortableProofOfWorkSolver())
@@ -81,7 +82,7 @@ import Testing
 
   @Test func retrySolvesOnlyListedLabelsAndUsesPolicyFallback() async throws {
     for omitBits in [false, true] {
-      let server = FakeHost()
+      let server = FakeProfileHost()
       await server.configure(omitBits: omitBits, onlyMissing: true)
       let client = ProfileHostingClient(domain: domain, http: server)
       let identity = try await identity(["alice", "bob"])
@@ -98,7 +99,7 @@ import Testing
   }
 
   @Test func retryOccursOnlyOnce() async throws {
-    let server = FakeHost()
+    let server = FakeProfileHost()
     await server.configure(alwaysNeedsProof: true)
     let client = ProfileHostingClient(domain: domain, http: server)
     let identity = try await identity(["alice"])
@@ -112,7 +113,7 @@ import Testing
   }
 
   @Test func takenAndRateLimited() async throws {
-    let server = FakeHost()
+    let server = FakeProfileHost()
     let client = ProfileHostingClient(domain: domain, http: server)
     let first = try await identity(["alice"])
     let second = try await identity(["alice", "bob"])
@@ -142,7 +143,7 @@ import Testing
   }
 
   @Test func badSolverAndTransformAreRejected() async throws {
-    let server = FakeHost()
+    let server = FakeProfileHost()
     let client = ProfileHostingClient(domain: domain, http: server)
     let identity = try await identity(["alice"])
     let bad = RecordingSolver(bad: true)
@@ -168,11 +169,11 @@ import Testing
     }
     #expect(await stub.requests.count == 1)
     let mismatch = ProfileHostingClient(domain: domain,
-      http: StubHTTP(FakeHost.json(FakeHost.policy(domain: "other.example"))))
+      http: StubHTTP(FakeProfileHost.json(FakeProfileHost.policy(domain: "other.example"))))
     await #expect(throws: ProfileHostingError.domainMismatch) { try await mismatch.policy() }
     let identity = try await identity(["alice"])
     let wrong = ProfileHostingClient(domain: domain,
-      http: StubHTTP(FakeHost.json(["identity": FakeHost.base64(identity.id.bytes),
+      http: StubHTTP(FakeProfileHost.json(["identity": FakeProfileHost.base64(identity.id.bytes),
         "revision": 2, "domains": ["alice.id.example"]])))
     await #expect(throws: ProfileHostingError.publishedMismatch) { try await wrong.publish(identity.profile) }
     let nested = try await self.identity(["alice", "nested.name.id.example"])

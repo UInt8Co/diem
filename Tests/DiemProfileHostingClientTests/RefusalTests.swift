@@ -1,4 +1,5 @@
 import Diem
+import DiemTesting
 import Testing
 @testable import DiemProfileHostingClient
 
@@ -20,7 +21,7 @@ import Testing
       [["label": "alice", "reason": "proof-required", "requiredBits": 4],
         ["label": "alice", "reason": "proof-required", "requiredBits": 4]],
     ] {
-      let response = FakeHost.json(["type": "urn:diem:profile-hosting:proof-required",
+      let response = FakeProfileHost.json(["type": "urn:diem:profile-hosting:proof-required",
         "title": "proof-required", "status": 403, "detail": "Proof", "labels": labels], status: 403)
       let http = StubHTTP(response)
       let host = ProfileHostingClient(domain: domain, http: http)
@@ -32,7 +33,7 @@ import Testing
       #expect(await http.requests.count == 1)
     }
     for bits in [-1, 65, Int64.max] {
-      let response = FakeHost.json(["type": "urn:diem:profile-hosting:proof-required",
+      let response = FakeProfileHost.json(["type": "urn:diem:profile-hosting:proof-required",
         "title": "proof-required", "status": 403, "detail": "Proof",
         "labels": [["label": "alice", "reason": "proof-required", "requiredBits": bits]]],
         status: 403)
@@ -46,14 +47,14 @@ import Testing
   }
 
   @Test func plansAreBoundToDomainAndIdentity() async throws {
-    let host = ProfileHostingClient(domain: domain, http: FakeHost())
+    let host = ProfileHostingClient(domain: domain, http: FakeProfileHost())
     let identity = try await identity()
     let plan = try await host.plan(labels: ["alice"], identity: identity.id)
     let solver = RecordingSolver()
     await #expect(throws: ProfileHostingError.domainsMismatch) {
       try await host.prove(plan, identity: Digest(hashing: []), solver: solver)
     }
-    let other = ProfileHostingClient(domain: try DomainName("other.example"), http: FakeHost())
+    let other = ProfileHostingClient(domain: try DomainName("other.example"), http: FakeProfileHost())
     await #expect(throws: ProfileHostingError.domainsMismatch) {
       try await other.prove(plan, identity: identity.id, solver: solver)
     }
@@ -64,7 +65,7 @@ import Testing
   }
 
   @Test func zeroBitsNeedNoSolver() async throws {
-    let http = StubHTTP(FakeHost.json(["label": "alice", "status": "available", "requiredBits": 0]))
+    let http = StubHTTP(FakeProfileHost.json(["label": "alice", "status": "available", "requiredBits": 0]))
     let host = ProfileHostingClient(domain: domain, http: http)
     let solver = RecordingSolver(bad: true)
     let identity = Digest(hashing: [])
@@ -79,14 +80,14 @@ import Testing
     let large = ProfileHostingClient(domain: domain, http: StubHTTP(.init(status: 200,
       body: Array(repeating: 0, count: JSON.maximumBytes + 1))))
     await #expect(throws: ProfileHostingError.tooLarge) { try await large.profile(at: "alice") }
-    let wrongName = ProfileHostingClient(domain: domain, http: StubHTTP(FakeHost.json([
+    let wrongName = ProfileHostingClient(domain: domain, http: StubHTTP(FakeProfileHost.json([
       "label": "bob", "status": "available", "requiredBits": 4])))
     await #expect(throws: ProfileHostingError.invalidResponse) { try await wrongName.name("alice") }
   }
 
   @Test func wrongPublishedIdentityAndEmptyHost() async throws {
     let identity = try await identity()
-    let host = ProfileHostingClient(domain: domain, http: StubHTTP(FakeHost.json([
+    let host = ProfileHostingClient(domain: domain, http: StubHTTP(FakeProfileHost.json([
       "identity": "wrong", "revision": 1, "domains": ["alice.id.example"]])))
     await #expect(throws: ProfileHostingError.publishedMismatch) {
       try await host.publish(identity.profile)

@@ -1,4 +1,5 @@
 import Diem
+import DiemTesting
 import Testing
 
 /// A profile named by exactly one domain, with a note at the first application key.

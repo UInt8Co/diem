@@ -1,4 +1,5 @@
 import Diem
+import DiemTesting
 import Testing
 @testable import DiemProfileHostingClient
 
@@ -6,29 +7,29 @@ import Testing
   let domain = try! DomainName("id.example")
 
   @Test func policyCapabilitiesAndGroups() throws {
-    let apex = try HostingPolicy(json: FakeHost.json([
+    let apex = try HostingPolicy(json: FakeProfileHost.json([
       "domain": domain.name, "apex": true]).body, domain: domain)
     #expect(apex.apex && !apex.servesChildNames && apex.names == nil)
     #expect(apex.requiredBits(for: "alice") == nil)
-    let children = try HostingPolicy(json: FakeHost.json(FakeHost.policy()).body, domain: domain)
+    let children = try HostingPolicy(json: FakeProfileHost.json(FakeProfileHost.policy()).body, domain: domain)
     #expect(!children.apex && children.servesChildNames)
     #expect(children.names?.labelPattern == "[a-z0-9-]+")
     #expect(children.requiredBits(for: "alice") == 4)
     #expect(children.requiredBits(for: "@") == nil)
-    var both = FakeHost.policy()
+    var both = FakeProfileHost.policy()
     both["apex"] = true
-    let combined = try HostingPolicy(json: FakeHost.json(both).body, domain: domain)
+    let combined = try HostingPolicy(json: FakeProfileHost.json(both).body, domain: domain)
     #expect(combined.servesChildNames && combined.requiredBits(for: "@") == nil)
     let invalid: [[String: Any]] = [
       ["domain": domain.name],
       ["domain": domain.name, "apex": false],
       ["domain": domain.name, "apex": "true"],
       ["domain": domain.name, "apex": true, "labelPattern": ".*"],
-      FakeHost.policy().filter { $0.key != "proofOfWork" },
+      FakeProfileHost.policy().filter { $0.key != "proofOfWork" },
     ]
     for fields in invalid {
       #expect(throws: ProfileHostingError.invalidResponse) {
-        try HostingPolicy(json: FakeHost.json(fields).body, domain: domain)
+        try HostingPolicy(json: FakeProfileHost.json(fields).body, domain: domain)
       }
     }
   }
@@ -41,8 +42,8 @@ import Testing
       (apexOnly, false, "id.example"), (both, false, "bob.id.example"),
       (both, true, "id.example"),
     ] {
-      let http = StubHTTP(FakeHost.json([
-        "identity": FakeHost.base64(identity.id.bytes), "revision": identity.profile.revision,
+      let http = StubHTTP(FakeProfileHost.json([
+        "identity": FakeProfileHost.base64(identity.id.bytes), "revision": identity.profile.revision,
         "domains": identity.profile.domains.map(\.name)]))
       let client = ProfileHostingClient(domain: domain, http: http)
       if explicit {
@@ -77,7 +78,7 @@ import Testing
 
   @Test func apexStatusPlanningAndProof() async throws {
     let identity = try await ClientTests().identity(["id.example"])
-    let http = FakeHost()
+    let http = FakeProfileHost()
     let client = ProfileHostingClient(domain: domain, http: http)
     let name = try await client.name("@")
     #expect(name.label == "@" && name.status == .available && name.requiredBits == 4)
@@ -94,7 +95,7 @@ import Testing
 
   @Test func apexProofRequiredSolvesAndRetries() async throws {
     let identity = try await ClientTests().identity(["id.example", "alice"])
-    let http = FakeHost()
+    let http = FakeProfileHost()
     let client = ProfileHostingClient(domain: domain, http: http)
     let solver = RecordingSolver()
     try await client.publish(identity.profile, via: .apex, solver: solver)
@@ -114,14 +115,14 @@ import Testing
 
   @Test func missingApexDifficultyIsUnsolvable() async throws {
     let identity = try await ClientTests().identity(["id.example", "alice"])
-    let statusHTTP = StubHTTP(FakeHost.json(["label": "@", "status": "available"]))
+    let statusHTTP = StubHTTP(FakeProfileHost.json(["label": "@", "status": "available"]))
     let statusClient = ProfileHostingClient(domain: domain, http: statusHTTP)
     let solver = RecordingSolver()
     await #expect(throws: ProfileHostingError.unsolvable("@")) {
       try await statusClient.prove(["@"], identity: identity.id, solver: solver)
     }
     #expect(await statusHTTP.requests.count == 1)
-    let http = StubHTTP(FakeHost.json([
+    let http = StubHTTP(FakeProfileHost.json([
       "type": "urn:diem:profile-hosting:proof-required", "title": "Proof", "detail": "Proof",
       "status": 403, "labels": [
         ["label": "alice", "reason": "proof-required", "requiredBits": 4],
@@ -154,7 +155,7 @@ import Testing
       try hostingProofHeader(["@": []])
     }
     #expect(throws: ProfileHostingError.invalidResponse) {
-      try HostingProblem(response: FakeHost.json([
+      try HostingProblem(response: FakeProfileHost.json([
         "type": "urn:diem:profile-hosting:proof-required", "title": "Proof", "detail": "Proof",
         "status": 403, "labels": [["label": "@@", "reason": "proof-required"]]], status: 403))
     }
@@ -162,7 +163,7 @@ import Testing
 
   @Test func claimingAndReleasingApex() async throws {
     let identity = try await ClientTests().identity(["external.example"])
-    let http = FakeHost()
+    let http = FakeProfileHost()
     let client = ProfileHostingClient(domain: domain, http: http)
     let solver = RecordingSolver()
     let claim = try await identity.claiming(labels: ["@", "alice"], at: client,
@@ -192,8 +193,8 @@ import Testing
 
   @Test func releasingChildrenRetainsApex() async throws {
     let identity = try await ClientTests().identity(["alice", "id.example"])
-    let http = StubHTTP(FakeHost.json([
-      "identity": FakeHost.base64(identity.id.bytes), "revision": identity.profile.revision + 1,
+    let http = StubHTTP(FakeProfileHost.json([
+      "identity": FakeProfileHost.base64(identity.id.bytes), "revision": identity.profile.revision + 1,
       "domains": [domain.name]]))
     let client = ProfileHostingClient(domain: domain, http: http)
     let release = try await identity.releasing(labels: ["alice"], at: client) { _, domains in

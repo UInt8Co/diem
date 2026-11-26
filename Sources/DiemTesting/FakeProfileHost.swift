@@ -1,29 +1,45 @@
 import Diem
+import DiemProfileHostingClient
 import Foundation
-@testable import DiemProfileHostingClient
 
-// Independent wire encoder/decoder; production JSON and header formatting are not used.
-actor FakeHost: HostingHTTPClient {
-  let domain = "id.example"
-  var bits = 4
-  var claims: [String: ProfileRecord] = [:]
-  var revisions: [Digest: ProfileRecord] = [:]
-  var requests: [HostingHTTPRequest] = []
+/// An in-memory profile host at `id.example` for tests of hosting clients.
+///
+/// It serves the hosting policy (with apex support), name status and profiles for child
+/// names and the apex, and accepts publications under the hosting rules: identical
+/// re-publication, increasing revisions, first-come claims and proof of work at ``bits``
+/// leading zero bits. Its JSON, proof header and base64url handling are written
+/// independently of the client's, so tests exercise the wire format rather than shared code.
+public actor FakeProfileHost: HostingHTTPClient {
+  public let domain = "id.example"
+  /// Required leading zero bits for every new name.
+  public private(set) var bits = 4
+  /// Hosted profiles by wire label (`@` for the apex).
+  public private(set) var claims: [String: ProfileRecord] = [:]
+  /// The latest accepted revision of each identity.
+  public private(set) var revisions: [Digest: ProfileRecord] = [:]
+  /// Every request received, in order.
+  public private(set) var requests: [HostingHTTPRequest] = []
   var limited = false
   var alwaysNeedsProof = false
   var omitBits = false
   var onlyMissing = false
 
-  func configure(limited: Bool = false, alwaysNeedsProof: Bool = false,
-    omitBits: Bool = false, onlyMissing: Bool = false
+  public init() {}
+
+  /// `limited` answers every acceptable publication with `rate-limited`;
+  /// `alwaysNeedsProof` refuses every publication with `proof-required`; `omitBits` leaves
+  /// required bits out of refusals; `onlyMissing` waives the proof for `alice`; `bits` sets the required zero bits.
+  public func configure(limited: Bool = false, alwaysNeedsProof: Bool = false,
+    omitBits: Bool = false, onlyMissing: Bool = false, bits: Int = 4
   ) {
+    self.bits = bits
     self.limited = limited
     self.alwaysNeedsProof = alwaysNeedsProof
     self.omitBits = omitBits
     self.onlyMissing = onlyMissing
   }
 
-  func send(_ request: HostingHTTPRequest) async throws -> HostingHTTPResponse {
+  public func send(_ request: HostingHTTPRequest) async throws -> HostingHTTPResponse {
     requests.append(request)
     let url = URL(string: request.url)!
     let host = url.host!
@@ -112,44 +128,27 @@ actor FakeHost: HostingHTTPClient {
       }], status: status, headers: status == 429 ? ["rEtRy-AfTeR": "37"] : [:])
   }
 
-  static func base64(_ bytes: [UInt8]) -> String {
+  /// Unpadded base64url through Foundation, independent of Diem's codec.
+  public static func base64(_ bytes: [UInt8]) -> String {
     Data(bytes).base64EncodedString().replacingOccurrences(of: "+", with: "-")
       .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
   }
 
-  static func json(_ object: [String: Any], status: Int = 200,
+  /// A JSON response with sorted keys.
+  public static func json(_ object: [String: Any], status: Int = 200,
     headers: [String: String] = [:]
   ) -> HostingHTTPResponse {
     .init(status: status, headers: headers,
       body: Array(try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])))
   }
 
-  static func policy(domain: String = "id.example", algorithm: String = "sha256-leading-zero-bits-v1",
+  /// A child-name hosting policy document.
+  public static func policy(domain: String = "id.example", algorithm: String = "sha256-leading-zero-bits-v1",
     base: Int64 = 4, slope: Int64 = 0, length: Int64 = 8
   ) -> [String: Any] {
     ["domain": domain, "labelPattern": "[a-z0-9-]+", "maxClaimsPerIdentity": 3,
       "maxUpdatesPerIdentityPerHour": 12, "claimGraceAfterExpiry": 2_592_000,
       "proofOfWork": ["algorithm": algorithm, "baseBits": base,
         "bitsPerShorterCharacter": slope, "referenceLength": length]]
-  }
-}
-
-actor StubHTTP: HostingHTTPClient {
-  let response: HostingHTTPResponse
-  var requests: [HostingHTTPRequest] = []
-  init(_ response: HostingHTTPResponse) { self.response = response }
-  func send(_ request: HostingHTTPRequest) -> HostingHTTPResponse {
-    requests.append(request)
-    return response
-  }
-}
-
-actor RecordingSolver: ProofOfWorkSolver {
-  var puzzles: [ProofOfWorkPuzzle] = []
-  var bad: Bool
-  init(bad: Bool = false) { self.bad = bad }
-  func solve(_ puzzle: ProofOfWorkPuzzle) async throws -> [UInt8] {
-    puzzles.append(puzzle)
-    return bad ? [] : try await PortableProofOfWorkSolver().solve(puzzle)
   }
 }

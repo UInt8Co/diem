@@ -1,5 +1,6 @@
 #if ProfileHostingServer
 import Diem
+import DiemTesting
 import DiemProfileHostingClient
 import DiemSwiftCrypto
 import HTTPTypes

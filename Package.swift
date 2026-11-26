@@ -29,6 +29,8 @@ let package = Package(
     .library(name: "DiemProfileHosting", targets: ["DiemProfileHosting"]),
     // The standalone profile host.
     .executable(name: "diem-profile-hosting", targets: ["DiemProfileHostingServer"]),
+    // A clock-controlled Swift Crypto backend and an in-memory profile host for tests.
+    .library(name: "DiemTesting", targets: ["DiemTesting"]),
     // Writes cross-language wire vectors.
     .executable(name: "diem-vectors", targets: ["DiemVectors"]),
   ],
@@ -76,14 +78,18 @@ let package = Package(
         serverProduct("Logging", "swift-log"),
       ]
     ),
+    .target(
+      name: "DiemTesting",
+      dependencies: ["Diem", "DiemSwiftCrypto", "DiemProfileHostingClient"]
+    ),
     .executableTarget(name: "DiemVectors", dependencies: ["DiemSwiftCrypto"]),
-    .testTarget(name: "DiemTests", dependencies: ["DiemSwiftCrypto"]),
+    .testTarget(name: "DiemTests", dependencies: ["DiemTesting", "DiemSwiftCrypto"]),
     .testTarget(name: "DiemProfileHostingClientTests",
-      dependencies: ["DiemProfileHostingClient", "DiemSwiftCrypto"]),
+      dependencies: ["DiemProfileHostingClient", "DiemTesting"]),
     .testTarget(
       name: "DiemProfileHostingTests",
       dependencies: [
-        "DiemProfileHosting", "DiemSwiftCrypto",
+        "DiemProfileHosting", "DiemSwiftCrypto", "DiemTesting",
         serverProduct("Hummingbird", "hummingbird"),
         serverProduct("HummingbirdTesting", "hummingbird"),
         serverProduct("HTTPTypes", "swift-http-types"),
