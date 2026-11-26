@@ -24,4 +24,6 @@ public enum DiemError: Error, Sendable, Equatable {
   case encryptionFailed
   /// The ciphertext, context or key does not decrypt.
   case decryptionFailed
+  /// A device-link record is malformed or over its bound, or does not match its QR code.
+  case invalidDeviceLink
 }

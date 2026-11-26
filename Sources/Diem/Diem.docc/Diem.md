@@ -24,8 +24,8 @@ constants. Text keys are ``ApplicationID``s: reverse-DNS names such as
 `com.example.notes`, each holding one application's field. Any other key type, or a text
 key that is not a valid ID, is ``DiemError/invalidEncoding``. Required keys and types are
 checked; unknown integer keys and every application field are accepted and retained when
-a record is re-encoded. Applications write their fields only in profile content and
-proofs. ``CBOR/Record`` is the same shape for an application's own records. Tuple
+a record is re-encoded. Applications write their fields in profile content, proofs and
+device-link grants; other records only accept and retain them. ``CBOR/Record`` is the same shape for an application's own records. Tuple
 encodings are not accepted, so identities and stored profiles require fresh state.
 
 This is wire version 5: `Diem/profile` and `Diem/profile-content` are version 5 and
@@ -136,6 +136,35 @@ stay on their creating device.
 WebCrypto keys without claiming hardware protection; ``KeyProtection/hardware`` remains
 for hardware stores such as Secure Enclave.
 
+## Linking a device
+
+A new device joins an identity by QR code without the identity key leaving the approving
+device, unless the approver chooses to transfer custody. The new device makes a
+``DeviceLinkRequest`` (its device key, a P-256 recipient key, a display label and the
+algorithms it can verify) and shows its ``DeviceLinkCode``, the request's digest and a
+16-byte secret, as a QR code. The application chooses the QR URL and its parameter name;
+Diem supplies the code's strict base64url `parameter`. The request itself travels over any
+channel; the approver checks the received bytes with `matches(_:)` and calls
+`requireCompatible(identityKey:device:)` before certifying the device and publishing the
+new revision.
+
+The approver then seals a ``DeviceLinkGrant``: the exact published profile, the domain it
+was published at, optionally the ``SealedIdentitySeed`` sealed to the request's recipient,
+and application fields under their IDs, which Diem does not interpret or restrict. A
+``DeviceLinkResponse`` is the grant sealed with HPKE whose info and associated data are
+the ``DeviceLinkContext``, so only the device that scanned the code can open it. Records
+are tagged `Diem/device-link-request`, `-code`, `-context` and `-grant`, version 1;
+requests, codes and contexts are bounded to 4,096 bytes and grants and responses to
+65,536, and failures of these records are ``DiemError/invalidDeviceLink``.
+
+`seal` and `open` decode the grant's profile as a caller-chosen ``DomainNamedProfile``
+and verify it at the given time: its signatures and validity, that it lists the grant's
+domain, that it certifies the request's device in its current generation with a
+certificate valid at that time, that the new device can verify its keys' algorithms, and
+that a sealed seed belongs to its identity and the request's recipient. Applications pass
+their own acceptance rules, such as the kind of profile a device may join, as the
+`accept` closure, which runs on the verified profile before any seed is opened.
+
 ## Topics
 
 ### Identities
@@ -153,6 +182,14 @@ for hardware stores such as Secure Enclave.
 - ``Statement``
 - ``StatementProof``
 - ``ApplicationID``
+
+### Device linking
+
+- ``DeviceLinkRequest``
+- ``DeviceLinkCode``
+- ``DeviceLinkContext``
+- ``DeviceLinkGrant``
+- ``DeviceLinkResponse``
 
 ### Identity and device keys
 
