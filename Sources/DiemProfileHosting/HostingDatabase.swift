@@ -52,6 +52,13 @@ actor HostingDatabase {
       .decode(column: "timeout", as: Int.self)
   }
 
+  /// Overwrites a stored profile's bytes verbatim, as a row another Diem version wrote
+  /// would hold them. For tests.
+  func overwriteEncoding(identity: Data, with encoding: Data) async throws {
+    try await (database() as! any SQLDatabase).raw(
+      "UPDATE hosting_profiles SET encoding = \(bind: encoding) WHERE identity = \(bind: identity)").run()
+  }
+
   func shutdown() async {
     guard !closed else { return }
     closed = true
@@ -151,15 +158,18 @@ actor HostingDatabase {
           throw HostingProblem(.hostNotListed, status: 422, detail: "The profile does not list the request host")
         }
         if let row = try await sql.raw("SELECT revision, generation, digest, encoding FROM hosting_profiles WHERE identity = \(bind: identity)").first() {
-          if try row.decode(column: "digest", as: Data.self) == digest,
-            try row.decode(column: "encoding", as: Data.self) == encoding {
+          let stored = try row.decode(column: "encoding", as: Data.self)
+          if try row.decode(column: "digest", as: Data.self) == digest, stored == encoding {
             try await sql.raw("COMMIT").run()
             return answer
           }
-          let revision = try row.decode(column: "revision", as: String.self)
-          let generation = try row.decode(column: "generation", as: String.self)
-          guard let revision = UInt64(revision), let generation = UInt64(generation),
-            profile.revision > revision, profile.generation >= generation else {
+          let revision = UInt64(try row.decode(column: "revision", as: String.self))
+          let generation = UInt64(try row.decode(column: "generation", as: String.self))
+          let advances = revision.map { profile.revision > $0 } == true
+            && generation.map { profile.generation >= $0 } == true
+          // A stored encoding this Diem cannot decode sets no floor: the verified profile
+          // of the same identity replaces it as a newer revision would.
+          guard advances || (try? ProfileRecord(encoding: Array(stored))) == nil else {
             throw HostingProblem(.staleRevision, status: 409,
               detail: "Revision must increase and device generation must not decrease")
           }

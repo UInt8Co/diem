@@ -473,6 +473,54 @@ extension ProfileHostingTests {
   }
 }
 
+extension ProfileHostingTests {
+  /// A stored head at revision 3 and generation 2, and a fresh revision-1, generation-1
+  /// profile of the same identity that its floor refuses.
+  func advancedAndFresh(clock: TestBackend) async throws -> (stored: ProfileRecord, fresh: ProfileRecord) {
+    let identityKey = try await IdentityPrivateKey.generate(.ed25519, using: clock)
+    var alice = try await TestIdentity(fields(["alice"]), identityKey: identityKey,
+      deviceKey: .generate(.ed25519, using: clock), using: clock)
+    try await alice.add(DevicePrivateKey.generate(.ed25519, using: clock).publicKey)
+    let stored = try await alice.renew()
+    let fresh = try await TestIdentity(fields(["alice"]), identityKey: identityKey,
+      deviceKey: .generate(.ed25519, using: clock), using: clock).profile
+    return (stored, fresh)
+  }
+
+  @Test func undecodableStoredProfileSetsNoFloor() async throws {
+    let clock = TestBackend()
+    let (stored, fresh) = try await advancedAndFresh(clock: clock)
+    let db = try await HostingDatabase(path: ":memory:")
+    defer { await db.shutdown() }
+    _ = try await db.publish(stored, label: "alice", proof: nil, configuration: config(), now: clock.now)
+    // The same canonical record under a version this Diem does not read.
+    var record = try CBOR(decoding: stored.encoding).recordValue(requiredKeys: 0..<5)
+    record.fields[ProfileRecord.cborKeyVersion] = .unsigned(6)
+    let foreign = record.value.encoded
+    #expect(throws: DiemError.self) { try ProfileRecord(encoding: foreign) }
+    try await db.overwriteEncoding(identity: Data(stored.id.bytes), with: Data(foreign))
+    let receipt = try await db.publish(fresh, label: "alice", proof: nil, configuration: config(), now: clock.now)
+    #expect(receipt.revision == 1)
+    let served = try await db.profile(label: "alice", now: clock.now, grace: 100)
+    #expect(served.map { Array($0) } == fresh.encoding)
+  }
+
+  @Test func decodableStoredProfileKeepsFloor() async throws {
+    let clock = TestBackend()
+    let (stored, fresh) = try await advancedAndFresh(clock: clock)
+    let db = try await HostingDatabase(path: ":memory:")
+    defer { await db.shutdown() }
+    _ = try await db.publish(stored, label: "alice", proof: nil, configuration: config(), now: clock.now)
+    let refusal = await #expect(throws: HostingProblem.self) {
+      _ = try await db.publish(fresh, label: "alice", proof: nil, configuration: config(), now: clock.now)
+    }
+    #expect(refusal?.code == .staleRevision)
+    #expect(refusal?.status == 409)
+    let served = try await db.profile(label: "alice", now: clock.now, grace: 100)
+    #expect(served.map { Array($0) } == stored.encoding)
+  }
+}
+
 extension HostingReadPerfTests {
   @Test func largeProfileProjection() async throws {
     let clock = TestBackend()

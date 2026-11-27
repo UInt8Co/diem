@@ -56,7 +56,9 @@ A `PUT` of the profile to any hosted name it lists verifies it, claims every lis
 under the domain and stores it, in one transaction. A request that cannot claim every
 name stores nothing. Each later revision replaces the identity's set of names, so a name
 it drops is released at once; revisions must increase and device generations must not
-decrease. A claim lapses only once the holder's profile has been expired for longer than
+decrease. A stored profile whose bytes this Diem cannot decode, such as one another Diem
+version wrote, sets no such floor: any verified profile of the same identity replaces it.
+A claim lapses only once the holder's profile has been expired for longer than
 the grace period. New names need a proof of work whose difficulty rises as labels get
 shorter; names already held need none. Updates per identity are limited over a rolling
 hour.
